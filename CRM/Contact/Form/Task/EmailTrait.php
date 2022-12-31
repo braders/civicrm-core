@@ -80,6 +80,14 @@ trait CRM_Contact_Form_Task_EmailTrait {
    */
   protected $suppressedEmails = [];
 
+  public $_contactDetails = [];
+
+  public $_entityTagValues;
+
+  public $_caseId;
+
+  public $_context;
+
   /**
    * Getter for isSearchContext.
    *
@@ -101,7 +109,6 @@ trait CRM_Contact_Form_Task_EmailTrait {
   /**
    * Build all the data structures needed to build the form.
    *
-   * @throws \CiviCRM_API3_Exception
    * @throws \CRM_Core_Exception
    */
   public function preProcess() {
@@ -116,9 +123,9 @@ trait CRM_Contact_Form_Task_EmailTrait {
    * later.
    *
    * @throws \CRM_Core_Exception
-   * @throws \API_Exception
    */
-  protected function traitPreProcess() {
+  protected function traitPreProcess(): void {
+    $this->addExpectedSmartyVariable('rows');
     if ($this->isSearchContext()) {
       // Currently only the contact email form is callable outside search context.
       parent::preProcess();
@@ -192,7 +199,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
       // get the details for all selected contacts ( to, cc and bcc contacts )
       $allContactDetails = civicrm_api3('Contact', 'get', [
         'id' => ['IN' => $this->_allContactIds],
-        'return' => ['sort_name', 'email', 'do_not_email', 'is_deceased', 'on_hold', 'display_name', 'preferred_mail_format'],
+        'return' => ['sort_name', 'email', 'do_not_email', 'is_deceased', 'on_hold', 'display_name'],
         'options' => ['limit' => 0],
       ])['values'];
 
@@ -232,7 +239,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
 
     $this->add('text', 'subject', ts('Subject'), ['size' => 50, 'maxlength' => 254], TRUE);
 
-    $this->add('select', 'from_email_address', ts('From'), $this->getFromEmails(), TRUE);
+    $this->add('select', 'from_email_address', ts('From'), $this->getFromEmails(), TRUE, ['class' => 'crm-select2 huge']);
 
     CRM_Mailing_BAO_Mailing::commonCompose($this);
 
@@ -302,7 +309,6 @@ trait CRM_Contact_Form_Task_EmailTrait {
    *
    * @return array
    *
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    */
   public function setDefaultValues(): array {
@@ -321,10 +327,8 @@ trait CRM_Contact_Form_Task_EmailTrait {
   /**
    * Process the form after the input has been submitted and validated.
    *
-   * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public function postProcess() {
     $this->bounceIfSimpleMailLimitExceeded(count($this->_contactIds));
@@ -354,10 +358,8 @@ trait CRM_Contact_Form_Task_EmailTrait {
    *
    * @param array $formValues
    *
-   * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public function submit($formValues): void {
     $this->saveMessageTemplate($formValues);
@@ -414,7 +416,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
    *
    * @param array $formValues
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   protected function saveMessageTemplate($formValues) {
@@ -443,7 +445,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
    * Get the emails from the added element.
    *
    * @return array
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   protected function getEmails(): array {
     $allEmails = explode(',', $this->getSubmittedValue('to'));
@@ -483,7 +485,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
    * @return string
    *   e.g. "Smith, Bob<bob.smith@example.com>".
    *
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   protected function getEmailString(array $emailIDs): string {
@@ -734,7 +736,6 @@ trait CRM_Contact_Form_Task_EmailTrait {
    *   bool $sent FIXME: this only indicates the status of the last email sent.
    *   array $activityIds The activity ids created, one per "To" recipient.
    *
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    * @throws \PEAR_Exception
    * @internal
@@ -975,7 +976,6 @@ trait CRM_Contact_Form_Task_EmailTrait {
    *
    * @return array
    *
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    */
   protected function getRowsForEmails(): array {
@@ -1034,7 +1034,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
 
   /**
    * @return string
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   protected function getBcc(): string {
@@ -1043,7 +1043,7 @@ trait CRM_Contact_Form_Task_EmailTrait {
 
   /**
    * @return string
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   protected function getCc(): string {

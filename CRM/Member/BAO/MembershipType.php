@@ -14,7 +14,7 @@
  * @package CRM
  * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
-class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implements \Civi\Test\HookInterface {
+class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implements \Civi\Core\HookInterface {
 
   /**
    * Static holder for the default Membership Type.
@@ -25,23 +25,20 @@ class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implem
   public static $_membershipTypeInfo = [];
 
   /**
-   * Fetch object based on array of properties.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return CRM_Member_BAO_MembershipType
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
-  public static function retrieve(&$params, &$defaults) {
-    $membershipType = new CRM_Member_DAO_MembershipType();
-    $membershipType->copyValues($params);
-    if ($membershipType->find(TRUE)) {
-      CRM_Core_DAO::storeValues($membershipType, $defaults);
-      return $membershipType;
-    }
-    return NULL;
+  public static function retrieve($params, &$defaults) {
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -68,7 +65,7 @@ class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implem
    *   Array contains the id (deprecated).
    *
    * @return \CRM_Member_DAO_MembershipType
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function add(&$params, $ids = []) {
     // DEPRECATED Check if membershipType ID was passed in via $ids
@@ -119,7 +116,7 @@ class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implem
   /**
    * Flush anywhere that membership types might be cached.
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function flush() {
     CRM_Member_PseudoConstant::membershipType(NULL, TRUE);
@@ -825,7 +822,7 @@ class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implem
    *
    * @return array
    *   List of membershipType details keyed by membershipTypeID
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function getAllMembershipTypes(): array {
     $cacheString = __CLASS__ . __FUNCTION__ . CRM_Core_Config::domainID() . '_' . CRM_Core_I18n::getLocale();
@@ -866,7 +863,7 @@ class CRM_Member_BAO_MembershipType extends CRM_Member_DAO_MembershipType implem
    * @param int $id
    *
    * @return mixed
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function getMembershipType($id) {
     return self::getAllMembershipTypes()[$id];

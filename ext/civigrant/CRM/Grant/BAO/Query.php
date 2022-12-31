@@ -17,12 +17,25 @@ use CRM_Grant_ExtensionUtil as E;
 class CRM_Grant_BAO_Query extends CRM_Contact_BAO_Query_Interface {
 
   /**
-   * Get grant fields.
+   * Get available fields.
+   *
+   * Important for exports & relative date filters.
    *
    * @return array
    */
   public function &getFields() {
     return CRM_Grant_BAO_Grant::exportableFields();
+  }
+
+  /**
+   * Get the fields that are available in the 'contact context'.
+   *
+   * For example exporting contacts should not include fields for grants etc.
+   *
+   * @return array
+   */
+  public function getContactFields(): array {
+    return [];
   }
 
   /**
@@ -63,6 +76,11 @@ class CRM_Grant_BAO_Query extends CRM_Contact_BAO_Query_Interface {
       $query->_select['grant_note'] = "civicrm_note.note as grant_note";
       $query->_element['grant_note'] = 1;
       $query->_tables['grant_note'] = 1;
+    }
+
+    if (!empty($query->_returnProperties['grant_id'])) {
+      $query->_select['grant_id'] = "civicrm_grant.id as grant_id";
+      $query->_element['grant_id'] = 1;
     }
 
     if ($query->_mode & CRM_Contact_BAO_Query::MODE_GRANT) {
@@ -209,8 +227,8 @@ class CRM_Grant_BAO_Query extends CRM_Contact_BAO_Query_Interface {
 
   /**
    * @param string $name
-   * @param $mode
-   * @param $side
+   * @param int $mode
+   * @param string $side
    *
    * @return null|string
    */
@@ -277,7 +295,7 @@ class CRM_Grant_BAO_Query extends CRM_Contact_BAO_Query_Interface {
   /**
    * Get the metadata for fields to be included on the grant search form.
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function getSearchFieldMetadata() {
     $fields = [

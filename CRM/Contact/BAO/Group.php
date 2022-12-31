@@ -19,24 +19,20 @@ use Civi\Api4\Group;
 class CRM_Contact_BAO_Group extends CRM_Contact_DAO_Group {
 
   /**
-   * Retrieve DB object based on input parameters.
-   *
-   * It also stores all the retrieved values in the default array.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return CRM_Contact_BAO_Group
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
-  public static function retrieve(&$params, &$defaults) {
-    $group = new CRM_Contact_DAO_Group();
-    $group->copyValues($params);
-    if ($group->find(TRUE)) {
-      CRM_Core_DAO::storeValues($group, $defaults);
-      return $group;
-    }
+  public static function retrieve($params, &$defaults) {
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -56,7 +52,7 @@ class CRM_Contact_BAO_Group extends CRM_Contact_DAO_Group {
 
     // added for CRM-1631 and CRM-1794
     // delete all subscribed mails with the selected group id
-    $subscribe = new CRM_Mailing_Event_DAO_Subscribe();
+    $subscribe = new CRM_Mailing_Event_DAO_MailingEventSubscribe();
     $subscribe->group_id = $id;
     $subscribe->delete();
 
@@ -184,7 +180,7 @@ class CRM_Contact_BAO_Group extends CRM_Contact_DAO_Group {
   public static function getMember($groupID, $useCache = TRUE, $limit = 0) {
     $params = [['group', '=', $groupID, 0, 0]];
     $returnProperties = ['contact_id'];
-    list($contacts) = CRM_Contact_BAO_Query::apiQuery($params, $returnProperties, NULL, NULL, 0, $limit, $useCache);
+    [$contacts] = CRM_Contact_BAO_Query::apiQuery($params, $returnProperties, NULL, NULL, 0, $limit, $useCache);
 
     $aMembers = [];
     foreach ($contacts as $contact) {
@@ -318,6 +314,22 @@ class CRM_Contact_BAO_Group extends CRM_Contact_DAO_Group {
     }
 
     return $permissions;
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function addSelectWhereClause() {
+    $clauses = [];
+    if (!CRM_Core_Permission::check([['edit all contacts', 'view all contacts']])) {
+      $allGroups = CRM_Core_PseudoConstant::allGroup(NULL, FALSE);
+      // FIXME: TableName 'civicrm_saved_search' seems wrong but is consistent with self::checkPermission
+      $allowedGroups = \CRM_ACL_API::group(CRM_ACL_API::VIEW, NULL, 'civicrm_saved_search', $allGroups);
+      $groupsIn = $allowedGroups ? implode(',', $allowedGroups) : '0';
+      $clauses['id'][] = "IN ($groupsIn)";
+    }
+    CRM_Utils_Hook::selectWhereClause($this, $clauses);
+    return $clauses;
   }
 
   /**
@@ -457,12 +469,21 @@ class CRM_Contact_BAO_Group extends CRM_Contact_DAO_Group {
     }
 
     if (!empty($params['organization_id'])) {
-      // dev/core#382 Keeping the id here can cause db errors as it tries to update the wrong record in the Organization table
-      $groupOrg = [
-        'group_id' => $group->id,
-        'organization_id' => $params['organization_id'],
-      ];
-      CRM_Contact_BAO_GroupOrganization::add($groupOrg);
+      if ($params['organization_id'] == 'null') {
+        $groupOrganization = [];
+        CRM_Contact_BAO_GroupOrganization::retrieve($group->id, $groupOrganization);
+        if (!empty($groupOrganization['group_organization'])) {
+          CRM_Contact_BAO_GroupOrganization::deleteGroupOrganization($groupOrganization['group_organization']);
+        }
+      }
+      else {
+        // dev/core#382 Keeping the id here can cause db errors as it tries to update the wrong record in the Organization table
+        $groupOrg = [
+          'group_id' => $group->id,
+          'organization_id' => $params['organization_id'],
+        ];
+        CRM_Contact_BAO_GroupOrganization::add($groupOrg);
+      }
     }
 
     self::flushCaches();
@@ -1404,6 +1425,36 @@ WHERE {$whereClause}";
     }
 
     return reset($parentArray);
+  }
+
+  /**
+   * @param string $entityName
+   * @param string $action
+   * @param array $record
+   * @param $userID
+   * @return bool
+   * @see CRM_Core_DAO::checkAccess
+   */
+  public static function _checkAccess(string $entityName, string $action, array $record, $userID): bool {
+    switch ($action) {
+      case 'create':
+        $groupType = (array) ($record['group_type:name'] ?? []);
+        // If not already in :name format, transform to name
+        foreach ((array) ($record['group_type'] ?? []) as $typeId) {
+          $groupType[] = CRM_Core_PseudoConstant::getName(self::class, 'group_type', $typeId);
+        }
+        if ($groupType === ['Mailing List']) {
+          // If it's only a Mailing List, edit groups OR create mailings will work
+          return CRM_Core_Permission::check(['access CiviCRM', ['edit groups', 'access CiviMail', 'create mailings']], $userID);
+        }
+        else {
+          return CRM_Core_Permission::check(['access CiviCRM', 'edit groups'], $userID);
+        }
+
+      default:
+        // All other actions just rely on gatekeeper permissions
+        return TRUE;
+    }
   }
 
 }

@@ -58,6 +58,9 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
   public function upgrade_5_47_alpha1($rev): void {
     $this->addTask(ts('Upgrade DB to %1: SQL', [1 => $rev]), 'runSql', $rev);
     $this->addTask('Migrate CiviGrant component to an extension', 'migrateCiviGrant');
+    if (CRM_Core_Component::isEnabled('CiviGrant')) {
+      $this->addExtensionTask('Enable CiviGrant extension', ['civigrant']);
+    }
     $this->addTask('Add created_date to civicrm_relationship', 'addColumn', 'civicrm_relationship', 'created_date',
       "timestamp NOT NULL  DEFAULT CURRENT_TIMESTAMP COMMENT 'Relationship created date'"
     );
@@ -66,12 +69,14 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
       "timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Relationship last modified.'"
     );
     $this->addTask('Set initial value for relationship created_date and modified_date to start_date', 'updateRelationshipDates');
-    $this->addTask('core-issue#2122 - Add timezone column to Events', 'addColumn',
-      'civicrm_event', 'event_tz', "text NULL DEFAULT NULL COMMENT 'Event\'s native time zone'"
-    );
-    $this->addTask('core-issue#2122 - Set the timezone to the default for existing Events', 'setEventTZDefault');
     $this->addTask('Drop CustomGroup UI_name_extends index', 'dropIndex', 'civicrm_custom_group', 'UI_name_extends');
     $this->addTask('Add CustomGroup UI_name index', 'addIndex', 'civicrm_custom_group', ['name'], 'UI');
+    if (CRM_Core_DAO::checkTableExists('civicrm_search_display')) {
+      $this->addTask('Add SearchDisplay.acl_bypass', 'addColumn',
+        'civicrm_search_display', 'acl_bypass',
+        "tinyint DEFAULT 0 COMMENT 'Skip permission checks and ACLs when running this display.'"
+      );
+    }
   }
 
   /**
@@ -91,12 +96,11 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
    * @param \CRM_Queue_TaskContext $ctx
    *
    * @return bool
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\NotImplementedException
    */
   public static function migrateCiviGrant(CRM_Queue_TaskContext $ctx): bool {
-    $civiGrantEnabled = in_array('CiviGrant', Civi::settings()->get('enable_components'), TRUE);
+    $civiGrantEnabled = CRM_Core_Component::isEnabled('CiviGrant');
     if ($civiGrantEnabled) {
       CRM_Core_BAO_ConfigSetting::disableComponent('CiviGrant');
     }
@@ -107,6 +111,12 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
       }
       CRM_Core_DAO::executeQuery("DELETE FROM civicrm_component WHERE name = 'CiviGrant'", [], TRUE, NULL, FALSE, FALSE);
     }
+    // Reload the civi cache here as 'table_name' may not be in the cached entities
+    // array generated in an earlier version retrieved via $cache->get('api4.entities.info', []);
+    Civi::cache('metadata')->flush();
+
+    // There are existing records which should be managed by `civigrant`. To assign ownership, we need
+    // placeholders in `civicrm_extension` and `civicrm_managed`.
     $ext = new CRM_Core_DAO_Extension();
     $ext->full_name = 'civigrant';
     if (!$ext->find(TRUE)) {
@@ -114,134 +124,11 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
       $ext->name = 'CiviGrant';
       $ext->label = ts('CiviGrant');
       $ext->file = 'civigrant';
-      $ext->is_active = (int) $civiGrantEnabled;
+      $ext->is_active = 0; /* Not active _yet_. If site uses CiviGrant, we will re-activate once the core-schema has been revised. */
       $ext->save();
+      CRM_Extension_System::singleton()->getManager()->refresh();
 
       $managedItems = [
-        'OptionGroup_advanced_search_options_OptionValue_CiviGrant' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'advanced_search_options',
-            'name' => 'CiviGrant',
-          ],
-        ],
-        'OptionGroup_contact_view_options_OptionValue_CiviGrant' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'contact_view_options',
-            'name' => 'CiviGrant',
-          ],
-        ],
-        'OptionGroup_mapping_type_OptionValue_Export Grant' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'mapping_type',
-            'name' => 'Export Grant',
-          ],
-        ],
-        'OptionGroup_grant_status' => [
-          'entity' => 'OptionGroup',
-          'values' => [
-            'name' => 'grant_status',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Submitted' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Submitted',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Eligible' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Eligible',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Ineligible' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Ineligible',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Paid' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Paid',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Awaiting Information' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Awaiting Information',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Withdrawn' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Withdrawn',
-          ],
-        ],
-        'OptionGroup_grant_status_OptionValue_Approved for Payment' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_status',
-            'name' => 'Approved for Payment',
-          ],
-        ],
-        'OptionGroup_grant_type' => [
-          'entity' => 'OptionGroup',
-          'values' => [
-            'name' => 'grant_type',
-          ],
-        ],
-        'OptionGroup_grant_type_OptionValue_Emergency' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_type',
-            'name' => 'Emergency',
-          ],
-        ],
-        'OptionGroup_grant_type_OptionValue_Family Support' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_type',
-            'name' => 'Family Support',
-          ],
-        ],
-        'OptionGroup_grant_type_OptionValue_General Protection' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_type',
-            'name' => 'General Protection',
-          ],
-        ],
-        'OptionGroup_grant_type_OptionValue_Impunity' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'grant_type',
-            'name' => 'Impunity',
-          ],
-        ],
-        'OptionGroup_report_template_OptionValue_CRM_Report_Form_Grant_Detail' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'report_template',
-            'name' => 'CRM_Report_Form_Grant_Detail',
-          ],
-        ],
-        'OptionGroup_report_template_OptionValue_CRM_Report_Form_Grant_Statistics' => [
-          'entity' => 'OptionValue',
-          'values' => [
-            'option_group_id:name' => 'report_template',
-            'name' => 'CRM_Report_Form_Grant_Statistics',
-          ],
-        ],
         'Navigation_Grants' => [
           'entity' => 'Navigation',
           'values' => [
@@ -294,13 +181,6 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
             'domain_id' => 'current_domain',
           ],
         ],
-        'Navigation_Grants_Navigation_Grant_Reports' => [
-          'entity' => 'Navigation',
-          'values' => [
-            'name' => 'Grant Reports',
-            'domain_id' => 'current_domain',
-          ],
-        ],
       ];
       // Create an entry in civicrm_managed for each existing record that will be managed by the extension
       foreach ($managedItems as $name => $item) {
@@ -329,19 +209,6 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
         }
       }
     }
-    return TRUE;
-  }
-
-  /**
-   * Set the timezone to the default for existing Events.
-   *
-   * @param \CRM_Queue_TaskContext $ctx
-   * @return bool
-   */
-  public static function setEventTZDefault(CRM_Queue_TaskContext $ctx) {
-    // Set default for CiviCRM Events to user system timezone (most reasonable default);
-    $defaultTZ = CRM_Core_Config::singleton()->userSystem->getTimeZoneString();
-    CRM_Core_DAO::executeQuery('UPDATE `civicrm_event` SET `event_tz` = %1 WHERE `event_tz` IS NULL;', [1 => [$defaultTZ, 'String']]);
     return TRUE;
   }
 

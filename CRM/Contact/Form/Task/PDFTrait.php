@@ -220,8 +220,6 @@ trait CRM_Contact_Form_Task_PDFTrait {
    * Process the form after the input has been submitted and validated.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
-   * @throws \API_Exception
    */
   public function postProcess(): void {
     $formValues = $this->controller->exportValues($this->getName());
@@ -263,7 +261,7 @@ trait CRM_Contact_Form_Task_PDFTrait {
     $fileName = $this->getFileName();
 
     if ($type === 'pdf') {
-      CRM_Utils_PDF_Utils::html2pdf($html, $fileName, FALSE, $formValues);
+      CRM_Utils_PDF_Utils::html2pdf($html, $fileName . '.pdf', FALSE, $formValues);
     }
     elseif (!empty($formValues['document_file_path'])) {
       $fileName = pathinfo($formValues['document_file_path'], PATHINFO_FILENAME) . '.' . $type;
@@ -283,7 +281,7 @@ trait CRM_Contact_Form_Task_PDFTrait {
         civicrm_api3('Attachment', 'create', [
           'entity_table' => 'civicrm_activity',
           'entity_id' => $activityId,
-          'name' => $fileName,
+          'name' => $fileName . '.' . $type,
           'mime_type' => $mimeType,
           'options' => [
             'move-file' => $tee->getFileName(),
@@ -332,7 +330,6 @@ trait CRM_Contact_Form_Task_PDFTrait {
    *   and use-case.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   protected function createActivities($html_message, $contactIds, $subject, $campaign_id, $perContactHtml = []): array {
     $activityParams = [
@@ -401,7 +398,6 @@ trait CRM_Contact_Form_Task_PDFTrait {
    * @return string $html_message
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   public function processTemplate(&$formValues) {

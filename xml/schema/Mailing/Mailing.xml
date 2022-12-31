@@ -9,6 +9,7 @@
   <archive>true</archive>
   <icon>fa-envelope-o</icon>
   <component>CiviMail</component>
+  <labelField>name</labelField>
   <paths>
     <add>civicrm/a/#/mailing/new</add>
     <update>civicrm/a/#/mailing/[id]</update>
@@ -206,12 +207,15 @@
     <pseudoconstant>
       <callback>CRM_Mailing_BAO_Mailing::getTemplateTypeNames</callback>
     </pseudoconstant>
+    <add>4.7.16</add>
   </field>
   <field>
     <name>template_options</name>
     <title>Template Options (JSON)</title>
     <type>longtext</type>
     <comment>Advanced options used by the email templating system. (JSON encoded)</comment>
+    <serialize>JSON</serialize>
+    <add>4.7.16</add>
   </field>
   <field>
     <name>subject</name>
@@ -242,6 +246,8 @@
   <field>
     <name>url_tracking</name>
     <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
     <comment>Should we track URL click-throughs for this mailing?</comment>
     <html>
       <type>CheckBox</type>
@@ -251,6 +257,8 @@
   <field>
     <name>forward_replies</name>
     <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
     <comment>Should we forward replies back to the author?</comment>
     <html>
       <type>CheckBox</type>
@@ -260,6 +268,8 @@
   <field>
     <name>auto_responder</name>
     <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
     <comment>Should we enable the auto-responder?</comment>
     <html>
       <type>CheckBox</type>
@@ -270,12 +280,16 @@
     <name>open_tracking</name>
     <title>Track Mailing?</title>
     <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
     <comment>Should we track when recipients open/read this mailing?</comment>
   </field>
   <field>
     <name>is_completed</name>
     <title>Mailing Completed</title>
     <type>boolean</type>
+    <default>0</default>
+    <required>true</required>
     <comment>Has at least one job associated with this mailing finished?</comment>
     <html>
       <type>CheckBox</type>
@@ -300,6 +314,7 @@
     <name>override_verp</name>
     <type>boolean</type>
     <default>0</default>
+    <required>true</required>
     <add>2.2</add>
     <comment>Overwrite the VERP address in Reply-To</comment>
     <html>
@@ -433,6 +448,7 @@
     <type>boolean</type>
     <title>Is Mailing Archived?</title>
     <default>0</default>
+    <required>true</required>
     <comment>Is this mailing archived?</comment>
     <html>
       <type>CheckBox</type>
@@ -483,6 +499,7 @@
     <type>boolean</type>
     <title>No Duplicate emails?</title>
     <default>0</default>
+    <required>true</required>
     <add>4.1</add>
     <comment>Remove duplicate emails?</comment>
     <html>

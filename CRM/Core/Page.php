@@ -129,7 +129,17 @@ class CRM_Core_Page {
     // Required for footer.tpl,
     // See ExampleHookTest:testPageOutput.
     'footer_status_severity',
+    // in 'body.tpl
+    'suppressForm',
+    'beginHookFormElements',
   ];
+
+  /**
+   * The permission we have on this contact
+   *
+   * @var string
+   */
+  public $_permission;
 
   /**
    * Class constructor.
@@ -195,6 +205,8 @@ class CRM_Core_Page {
 
     $pageTemplateFile = $this->getHookedTemplateFileName();
     self::$_template->assign('tplFile', $pageTemplateFile);
+
+    self::$_template->addExpectedTabHeaderKeys();
 
     // invoke the pagRun hook, CRM-3906
     CRM_Utils_Hook::pageRun($this);
@@ -447,7 +459,7 @@ class CRM_Core_Page {
    * @param string $entity
    *   The entity being queried.
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   protected function assignFieldMetadataToTemplate($entity) {
     $fields = civicrm_api3($entity, 'getfields', ['action' => 'get']);
@@ -506,12 +518,33 @@ class CRM_Core_Page {
     $attribs = array_merge($standardAttribs, $attribs);
     foreach ($attribs as $attrib => $val) {
       if (strlen($val)) {
-        $val = htmlspecialchars($val);
+        $val = htmlspecialchars($val, ENT_COMPAT);
         $attribString .= " $attrib=\"$val\"";
       }
     }
 
     return "<i$attribString></i>$sr";
+  }
+
+  /**
+   * Add an expected smarty variable to the array.
+   *
+   * @param string $elementName
+   */
+  public function addExpectedSmartyVariable(string $elementName): void {
+    $this->expectedSmartyVariables[] = $elementName;
+  }
+
+  /**
+   * Add an expected smarty variable to the array.
+   *
+   * @param array $elementNames
+   */
+  public function addExpectedSmartyVariables(array $elementNames): void {
+    foreach ($elementNames as $elementName) {
+      // Duplicates don't actually matter....
+      $this->addExpectedSmartyVariable($elementName);
+    }
   }
 
 }

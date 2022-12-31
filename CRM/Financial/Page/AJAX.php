@@ -357,10 +357,10 @@ class CRM_Financial_Page_AJAX {
             $row[$financialItem->id][$columnKey] = $row[$financialItem->id][$columnKey] . $checkNumber;
           }
         }
-        elseif ($columnKey == 'amount' && $financialItem->$columnKey) {
-          $row[$financialItem->id][$columnKey] = CRM_Utils_Money::format($financialItem->$columnKey, $financialItem->currency);
+        elseif ($columnKey === 'amount' && $financialItem->$columnKey) {
+          $row[$financialItem->id][$columnKey] = Civi::format()->money($financialItem->$columnKey, $financialItem->currency);
         }
-        elseif ($columnKey == 'transaction_date' && $financialItem->$columnKey) {
+        elseif ($columnKey === 'transaction_date' && $financialItem->$columnKey) {
           $row[$financialItem->id][$columnKey] = CRM_Utils_Date::customFormat($financialItem->$columnKey);
         }
         elseif ($columnKey == 'receive_date' && $financialItem->$columnKey) {
@@ -503,7 +503,6 @@ class CRM_Financial_Page_AJAX {
   }
 
   /**
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    */
   public static function getBatchSummary(): void {
@@ -516,7 +515,6 @@ class CRM_Financial_Page_AJAX {
    * @param $batchID
    *
    * @return array
-   * @throws \API_Exception
    * @throws \CRM_Core_Exception
    */
   public static function makeBatchSummary(int $batchID): array {

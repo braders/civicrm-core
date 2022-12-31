@@ -18,20 +18,24 @@
 
 namespace api\v4\Entity;
 
-use api\v4\UnitTestCase;
+use api\v4\Api4TestBase;
 use Civi\Api4\Domain;
 use Civi\Api4\Group;
+use Civi\Api4\Managed;
 use Civi\Api4\Navigation;
 use Civi\Api4\OptionGroup;
 use Civi\Api4\OptionValue;
 use Civi\Api4\SavedSearch;
 use Civi\Test\HookInterface;
 use Civi\Test\TransactionalInterface;
+use CRM_Core_ManagedEntities;
+use CRM_Core_Module;
+use CRM_Utils_System;
 
 /**
  * @group headless
  */
-class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, HookInterface {
+class ManagedEntityTest extends Api4TestBase implements TransactionalInterface, HookInterface {
   /**
    * @var array[]
    */
@@ -46,7 +50,10 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $entities = array_merge($entities, $this->_managedEntities);
   }
 
-  public function testGetFields() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testGetFields(): void {
     $fields = SavedSearch::getFields(FALSE)
       ->addWhere('type', '=', 'Extra')
       ->setLoadOptions(TRUE)
@@ -57,7 +64,10 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->assertArrayHasKey('org.civicrm.flexmailer', $fields['base_module']['options']);
   }
 
-  public function testRevertSavedSearch() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testRevertSavedSearch(): void {
     $this->_managedEntities[] = [
       // Setting module to 'civicrm' works for the test but not sure we should actually support that
       // as it's probably better to package stuff in a core extension instead of core itself.
@@ -82,7 +92,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
       ],
     ];
 
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    Managed::reconcile(FALSE)->addModule('civicrm')->execute();
 
     $search = SavedSearch::get(FALSE)
       ->addWhere('name', '=', 'TestManagedSavedSearch')
@@ -127,7 +137,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->assertNull($search['local_modified_date']);
 
     // Check calculated fields for a non-managed entity - they should be empty
-    $newName = uniqid(__FUNCTION__);
+    $newName = 'search name';
     SavedSearch::create(FALSE)
       ->addValue('name', $newName)
       ->addValue('label', 'Whatever')
@@ -143,7 +153,10 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->assertNull($search['local_modified_date']);
   }
 
-  public function testAutoUpdateSearch() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testAutoUpdateSearch(): void {
     $autoUpdateSearch = [
       'module' => 'civicrm',
       'name' => 'testAutoUpdate',
@@ -167,7 +180,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     ];
     // Add managed search
     $this->_managedEntities[] = $autoUpdateSearch;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     $search = SavedSearch::get(FALSE)
       ->addWhere('name', '=', 'TestAutoUpdateSavedSearch')
@@ -178,7 +191,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
 
     // Remove managed search
     $this->_managedEntities = [];
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     // Because the search has no displays, it will be deleted (cleanup = unused)
     $search = SavedSearch::get(FALSE)
@@ -189,7 +202,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     // Restore managed entity
     $this->_managedEntities = [];
     $this->_managedEntities[] = $autoUpdateSearch;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     // Entity should be restored
     $result = SavedSearch::get(FALSE)
@@ -214,7 +227,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $autoUpdateSearch['params']['values']['description'] = 'New packaged state';
     $this->_managedEntities = [];
     $this->_managedEntities[] = $autoUpdateSearch;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     // Because the entity was not modified, it will be updated to match the new packaged version
     $search = SavedSearch::get(FALSE)
@@ -234,7 +247,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $autoUpdateSearch['params']['values']['description'] = 'Newer packaged state';
     $this->_managedEntities = [];
     $this->_managedEntities[] = $autoUpdateSearch;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     // Because the entity was  modified, it will not be updated
     $search = SavedSearch::get(FALSE)
@@ -262,7 +275,10 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->assertNull($search['local_modified_date']);
   }
 
-  public function testOptionGroupAndValues() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testOptionGroupAndValues(): void {
     $optionGroup = [
       'module' => 'civicrm',
       'name' => 'testManagedOptionGroup',
@@ -304,14 +320,24 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     ];
     $this->_managedEntities[] = $optionGroup;
     $this->_managedEntities[] = $optionValue1;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     $values = OptionValue::get(FALSE)
+      ->addSelect('*', 'local_modified_date', 'has_base')
       ->addWhere('option_group_id.name', '=', 'testManagedOptionGroup')
       ->execute();
 
     $this->assertCount(1, $values);
     $this->assertEquals('Option Value 1', $values[0]['label']);
+    $this->assertNull($values[0]['local_modified_date']);
+    $this->assertTrue($values[0]['has_base']);
+
+    // Update option 1, now it should have a local_modified_date
+    // And the new label should persist after a reconcile
+    OptionValue::update(FALSE)
+      ->addWhere('id', '=', $values[0]['id'])
+      ->addValue('label', '1 New Label')
+      ->execute();
 
     $optionValue2 = [
       'module' => 'civicrm',
@@ -333,9 +359,9 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
         ],
       ],
     ];
-
     $this->_managedEntities[] = $optionValue2;
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     $values = OptionValue::get(FALSE)
       ->addWhere('option_group_id.name', '=', 'testManagedOptionGroup')
@@ -344,18 +370,24 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
       ->execute();
 
     $this->assertCount(2, $values);
-    $this->assertEquals('Option Value 2', $values[1]['label']);
-    $this->assertNull($values[0]['local_modified_date']);
+    $this->assertEquals('1 New Label', $values[0]['label']);
+    $this->assertNotNull($values[0]['local_modified_date']);
     $this->assertTrue($values[0]['has_base']);
+    $this->assertEquals('Option Value 2', $values[1]['label']);
+    $this->assertNull($values[1]['local_modified_date']);
+    $this->assertTrue($values[1]['has_base']);
 
     $this->_managedEntities = [];
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     $this->assertCount(0, OptionValue::get(FALSE)->addWhere('id', 'IN', $values->column('id'))->execute());
     $this->assertCount(0, OptionGroup::get(FALSE)->addWhere('name', '=', 'testManagedOptionGroup')->execute());
   }
 
-  public function testExportOptionGroupWithDomain() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testExportOptionGroupWithDomain(): void {
     $result = OptionGroup::get(FALSE)
       ->addWhere('name', '=', 'from_email_address')
       ->addChain('export', OptionGroup::export()->setId('$id'))
@@ -369,8 +401,11 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     }
   }
 
-  public function testManagedNavigationWeights() {
-    $this->_managedEntities = [
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testManagedNavigationWeights(): void {
+    $managedEntities = [
       [
         'module' => 'unit.test.fake.ext',
         'name' => 'Navigation_Test_Parent',
@@ -461,13 +496,14 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
         ],
       ],
     ];
+    $this->_managedEntities = $managedEntities;
 
     // Throw a monkey wrench by placing duplicates in another domain
     $d2 = Domain::create(FALSE)
       ->addValue('name', 'Decoy domain')
-      ->addValue('version', \CRM_Utils_System::version())
+      ->addValue('version', CRM_Utils_System::version())
       ->execute()->single();
-    foreach ($this->_managedEntities as $item) {
+    foreach ($managedEntities as $item) {
       $decoys[] = civicrm_api4('Navigation', 'create', [
         'checkPermissions' => FALSE,
         'values' => ['domain_id' => $d2['id']] + $item['params']['values'],
@@ -476,9 +512,14 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
 
     // Refresh managed entities with module active
     $allModules = [
-      new \CRM_Core_Module('unit.test.fake.ext', TRUE),
+      new CRM_Core_Module('unit.test.fake.ext', TRUE),
+      // We can't wip out this enabled module as it still have declared
+      // managed entities & the test will fail if we pretend it doesn't exist
+      // here but still let it declare entities.
+      new CRM_Core_Module('legacycustomsearches', TRUE),
+      new CRM_Core_Module('org.civicrm.search_kit', TRUE),
     ];
-    (new \CRM_Core_ManagedEntities($allModules))->reconcile();
+    (new CRM_Core_ManagedEntities($allModules))->reconcile();
 
     $nav = Navigation::get(FALSE)
       ->addWhere('name', '=', 'Test_Parent')
@@ -520,9 +561,16 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
 
     // Refresh managed entities with module disabled
     $allModules = [
-      new \CRM_Core_Module('unit.test.fake.ext', FALSE),
+      new CRM_Core_Module('unit.test.fake.ext', FALSE),
+      // We can't wip out this enabled module as it still have declared
+      // managed entities & the test will fail if we pretend it doesn't exist
+      // here but still let it declare entities.
+      new CRM_Core_Module('legacycustomsearches', TRUE),
+      new CRM_Core_Module('org.civicrm.search_kit', TRUE),
     ];
-    (new \CRM_Core_ManagedEntities($allModules))->reconcile();
+    // If module is disabled it will not run hook_civicrm_managed.
+    $this->_managedEntities = [];
+    (new CRM_Core_ManagedEntities($allModules))->reconcile();
 
     // Children's weight should have been unaffected, but they should be disabled
     $children = Navigation::get(FALSE)
@@ -541,9 +589,15 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
 
     // Refresh managed entities with module active
     $allModules = [
-      new \CRM_Core_Module('unit.test.fake.ext', TRUE),
+      new CRM_Core_Module('unit.test.fake.ext', TRUE),
+      // We can't wip out this enabled module as it still have declared
+      // managed entities & the test will fail if we pretend it doesn't exist
+      // here but still let it declare entities.
+      new CRM_Core_Module('legacycustomsearches', TRUE),
+      new CRM_Core_Module('org.civicrm.search_kit', TRUE),
     ];
-    (new \CRM_Core_ManagedEntities($allModules))->reconcile();
+    $this->_managedEntities = $managedEntities;
+    (new CRM_Core_ManagedEntities($allModules))->reconcile();
 
     // Children's weight should have been unaffected, but they should be enabled
     $children = Navigation::get(FALSE)
@@ -561,7 +615,10 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->assertEquals(TRUE, $nav['is_active']);
   }
 
-  public function testExportAndCreateGroup() {
+  /**
+   * @throws \CRM_Core_Exception
+   */
+  public function testExportAndCreateGroup(): void {
     $original = Group::create(FALSE)
       ->addValue('title', 'My Managed Group')
       ->execute()->single();
@@ -575,7 +632,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     $this->_managedEntities = [
       ['module' => 'civicrm'] + $export,
     ];
-    \CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
 
     $created = Group::get(FALSE)
       ->addWhere('name', '=', $original['name'])
@@ -587,11 +644,65 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
   }
 
   /**
+   * Tests a scenario where a record may already exist and we want to make it a managed entity.@dataProvider
+   *
+   * @throws \CRM_Core_Exception
+   */
+  public function testMatchExisting(): void {
+    $optionGroup = OptionGroup::create(FALSE)
+      ->addValue('title', 'My pre-existing group')
+      ->addValue('name', 'My_pre_existing_group')
+      ->execute()->first();
+
+    $managed = [
+      'module' => 'civicrm',
+      'name' => 'preExistingGroup',
+      'entity' => 'OptionGroup',
+      'cleanup' => 'always',
+      'update' => 'always',
+      'params' => [
+        'version' => 4,
+        'values' => [
+          'name' => $optionGroup['name'],
+          'title' => 'Cool new title',
+          'description' => 'Cool new description',
+        ],
+      ],
+    ];
+    $this->_managedEntities = [$managed];
+
+    // Without "match" in the params, it will try and fail to add a duplicate managed record
+    try {
+      CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+    }
+    catch (\Exception $e) {
+    }
+    $this->assertStringContainsString('already exists', $e->getMessage());
+
+    // Now reconcile using a match param
+    $managed['params']['match'] = ['name'];
+    $this->_managedEntities = [$managed];
+    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
+
+    $managedGroup = OptionGroup::get(FALSE)
+      ->addWhere('name', '=', $optionGroup['name'])
+      ->addSelect('id', 'title', 'description', 'base_module')
+      ->execute()->single();
+
+    $this->assertEquals($optionGroup['id'], $managedGroup['id']);
+    $this->assertEquals('Cool new title', $managedGroup['title']);
+    $this->assertEquals('Cool new description', $managedGroup['description']);
+    // The existing record has been converted to a managed entity!
+    $this->assertEquals('civicrm', $managedGroup['base_module']);
+  }
+
+  /**
    * @dataProvider sampleEntityTypes
+   *
    * @param string $entityName
    * @param bool $expected
    */
-  public function testIsApi4ManagedType($entityName, $expected) {
+  public function testIsApi4ManagedType(string $entityName, bool $expected): void {
     $this->assertEquals($expected, \CRM_Core_BAO_Managed::isAPi4ManagedType($entityName));
   }
 
@@ -621,7 +732,7 @@ class ManagedEntityTest extends UnitTestCase implements TransactionalInterface, 
     return array_combine(array_keys($entityTypes), \CRM_Utils_Array::makeNonAssociative($entityTypes, 0, 1));
   }
 
-  private function getCurrentTimestamp() {
+  private function getCurrentTimestamp(): string {
     return \CRM_Core_DAO::singleValueQuery('SELECT CURRENT_TIMESTAMP');
   }
 

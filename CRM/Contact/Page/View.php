@@ -46,7 +46,7 @@ class CRM_Contact_Page_View extends CRM_Core_Page {
    *
    * @var string
    */
-  protected $_permission;
+  public $_permission;
 
   /**
    * Heart of the viewing process.
@@ -162,15 +162,14 @@ class CRM_Contact_Page_View extends CRM_Core_Page {
     $this->set('contactType', $contactType);
 
     // note: there could still be multiple subtypes. We just trimming the outer separator.
-    $this->set('contactSubtype', trim($contactSubtype, CRM_Core_DAO::VALUE_SEPARATOR));
+    $this->set('contactSubtype', trim(($contactSubtype ?? ''), CRM_Core_DAO::VALUE_SEPARATOR));
 
     // add to recently viewed block
     $isDeleted = (bool) CRM_Core_DAO::getFieldValue('CRM_Contact_DAO_Contact', $this->_contactId, 'is_deleted');
 
     $recentOther = [
       'imageUrl' => $contactImageUrl,
-      'subtype' => $contactSubtype,
-      'isDeleted' => $isDeleted,
+      'is_deleted' => $isDeleted,
     ];
 
     if (CRM_Contact_BAO_Contact_Permission::allow($this->_contactId, CRM_Core_Permission::EDIT)) {
@@ -186,7 +185,7 @@ class CRM_Contact_Page_View extends CRM_Core_Page {
     CRM_Utils_Recent::add($displayName,
       CRM_Utils_System::url('civicrm/contact/view', "reset=1&cid={$this->_contactId}"),
       $this->_contactId,
-      $contactType,
+      'Contact',
       $this->_contactId,
       $displayName,
       $recentOther
@@ -208,6 +207,9 @@ class CRM_Contact_Page_View extends CRM_Core_Page {
     // Add links for actions menu
     self::addUrls($this, $this->_contactId);
     $this->assign('groupOrganizationUrl', $this->getGroupOrganizationUrl($contactType));
+
+    // Assign deleteURL variable, used as part of ContactImage.tpl
+    self::$_template->ensureVariablesAreAssigned(['deleteURL']);
   }
 
   /**
@@ -301,7 +303,7 @@ class CRM_Contact_Page_View extends CRM_Core_Page {
       try {
         $mergedTo = civicrm_api3('Contact', 'getmergedto', ['contact_id' => $contactId, 'api.Contact.get' => ['return' => 'display_name']]);
       }
-      catch (CiviCRM_API3_Exception $e) {
+      catch (CRM_Core_Exception $e) {
         CRM_Core_Session::singleton()->setStatus(ts('This contact was deleted during a merge operation. The contact it was merged into cannot be found and may have been deleted.'));
         $mergedTo = ['count' => 0];
       }

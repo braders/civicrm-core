@@ -22,7 +22,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    * Prior to version 5.7.5 mysql only supports a single named lock. This variable is
    * part of the skullduggery involved in 'say it's no so Frank'.
    *
-   * See further comments on the aquire function.
+   * See further comments on the acquire function.
    *
    * @var bool
    */
@@ -41,6 +41,12 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
   protected $_name;
 
   protected $_id;
+
+  /**
+   * Lock Timeout
+   * @var int
+   */
+  protected $_timeout;
 
   /**
    * Use MySQL's GET_LOCK(). Locks are shared across all Civi instances
@@ -158,7 +164,7 @@ class CRM_Core_Lock implements \Civi\Core\Lock\LockInterface {
    *
    * @todo document naming convention for CiviMail locks as this is key to ensuring they work properly.
    *
-   * @param int $timeout
+   * @param int|null $timeout
    *
    * @return bool
    * @throws \CRM_Core_Exception

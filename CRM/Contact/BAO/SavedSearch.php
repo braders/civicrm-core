@@ -21,25 +21,20 @@
 class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
 
   /**
-   * Retrieve DB object based on input parameters.
-   *
-   * It also stores all the retrieved values in the default array.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return CRM_Contact_DAO_SavedSearch
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
   public static function retrieve($params, &$defaults = []) {
-    $savedSearch = new CRM_Contact_DAO_SavedSearch();
-    $savedSearch->copyValues($params);
-    if ($savedSearch->find(TRUE)) {
-      CRM_Core_DAO::storeValues($savedSearch, $defaults);
-      return $savedSearch;
-    }
-    return NULL;
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -52,7 +47,6 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
    *   the values of the posted saved search used as default values in various Search Form
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public static function getFormValues($id) {
     $specialDateFields = [
@@ -181,7 +175,6 @@ class CRM_Contact_BAO_SavedSearch extends CRM_Contact_DAO_SavedSearch {
    * @return array
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public static function getSearchParams($id) {
     $savedSearch = \Civi\Api4\SavedSearch::get(FALSE)
@@ -344,7 +337,7 @@ WHERE  $where";
    * @param string $op
    * @param array|string|int $value
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function decodeRelativeFields(&$formValues, $fieldName, $op, $value) {
     // check if its a custom date field, if yes then 'searchDate' format the value

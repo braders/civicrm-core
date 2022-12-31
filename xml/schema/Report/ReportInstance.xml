@@ -137,9 +137,12 @@
     <name>is_active</name>
     <title>Report Instance is Active</title>
     <type>boolean</type>
+    <default>1</default>
+    <required>true</required>
     <comment>Is this entry active?</comment>
     <html>
       <type>CheckBox</type>
+      <label>Enabled</label>
     </html>
     <add>2.2</add>
   </field>
@@ -272,6 +275,7 @@
     <title>Instance is Reserved</title>
     <type>boolean</type>
     <default>0</default>
+    <required>true</required>
     <html>
       <type>CheckBox</type>
     </html>

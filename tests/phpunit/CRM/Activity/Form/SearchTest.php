@@ -6,6 +6,11 @@
  */
 class CRM_Activity_Form_SearchTest extends CiviUnitTestCase {
 
+  /**
+   * @var int
+   */
+  protected $individualID;
+
   public function setUp(): void {
     parent::setUp();
     $this->individualID = $this->individualCreate();
@@ -28,7 +33,6 @@ class CRM_Activity_Form_SearchTest extends CiviUnitTestCase {
    * Test submitted the search form.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testSearch(): void {
 
@@ -42,7 +46,7 @@ class CRM_Activity_Form_SearchTest extends CiviUnitTestCase {
     $this->assertEquals([
       [
         'contact_id' => '3',
-        'contact_type' => '<a href="/index.php?q=civicrm/contact/view&amp;reset=1&amp;cid=3" data-tooltip-url="/index.php?q=civicrm/profile/view&amp;reset=1&amp;gid=7&amp;id=3&amp;snippet=4&amp;is_show_email_task=1" class="crm-summary-link"><div class="icon crm-icon Individual-icon"></div></a>',
+        'contact_type' => '<a href="/index.php?q=civicrm/contact/view&amp;reset=1&amp;cid=3" data-tooltip-url="/index.php?q=civicrm/profile/view&amp;reset=1&amp;gid=7&amp;id=3&amp;snippet=4&amp;is_show_email_task=1" class="crm-summary-link"><i class="crm-i fa-fw fa-user" title=""></i></a>',
         'sort_name' => 'Anderson, Anthony',
         'display_name' => 'Mr. Anthony Anderson II',
         'activity_id' => '1',
@@ -64,6 +68,10 @@ class CRM_Activity_Form_SearchTest extends CiviUnitTestCase {
         'campaign' => NULL,
         'campaign_id' => NULL,
         'repeat' => '',
+        'contact_sub_type' => NULL,
+        'activity_campaign_id' => NULL,
+        'activity_engagement_level' => NULL,
+        'recipients' => '',
       ],
     ], $rows);
   }

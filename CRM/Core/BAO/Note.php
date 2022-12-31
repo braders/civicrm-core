@@ -18,7 +18,7 @@
 /**
  * BAO object for crm_note table.
  */
-class CRM_Core_BAO_Note extends CRM_Core_DAO_Note implements \Civi\Test\HookInterface {
+class CRM_Core_BAO_Note extends CRM_Core_DAO_Note implements \Civi\Core\HookInterface {
   use CRM_Core_DynamicFKAccessTrait;
 
   /**
@@ -26,24 +26,6 @@ class CRM_Core_BAO_Note extends CRM_Core_DAO_Note implements \Civi\Test\HookInte
    * @var int
    */
   const MAX_NOTES = 3;
-
-  /**
-   * Given a note id, retrieve the note text.
-   *
-   * @param int $id
-   *   Id of the note to retrieve.
-   *
-   * @return string
-   *   the note text or NULL if note not found
-   *
-   * @throws \CRM_Core_Exception
-   *
-   * @deprecated
-   */
-  public static function getNoteText($id) {
-    CRM_Core_Error::deprecatedFunctionWarning('unused function');
-    return CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Note', $id, 'note');
-  }
 
   /**
    * Given a note id, retrieve the note subject
@@ -237,7 +219,7 @@ class CRM_Core_BAO_Note extends CRM_Core_DAO_Note implements \Civi\Test\HookInte
    *
    * @return array
    */
-  public static function &getValues(&$params, &$values, $numNotes = self::MAX_NOTES) {
+  public static function &getValues($params, &$values, $numNotes = self::MAX_NOTES) {
     if (empty($params)) {
       return NULL;
     }

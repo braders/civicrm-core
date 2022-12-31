@@ -12,10 +12,12 @@
 namespace Civi\Search;
 
 use Civi\Api4\Action\SearchDisplay\AbstractRunAction;
+use Civi\Api4\Extension;
 use Civi\Api4\Query\SqlEquation;
 use Civi\Api4\Query\SqlFunction;
 use Civi\Api4\SearchDisplay;
 use Civi\Api4\Tag;
+use Civi\Api4\Utils\CoreUtil;
 use CRM_Search_ExtensionUtil as E;
 
 /**
@@ -31,7 +33,8 @@ class Admin {
    */
   public static function getAdminSettings():array {
     $schema = self::getSchema();
-    $extensions = \CRM_Extension_System::singleton()->getMapper();
+    $extensions = Extension::get(FALSE)->addWhere('status', '=', 'installed')
+      ->execute()->indexBy('key')->column('label');
     $data = [
       'schema' => self::addImplicitFKFields($schema),
       'joins' => self::getJoins($schema),
@@ -41,12 +44,11 @@ class Admin {
       'functions' => self::getSqlFunctions(),
       'displayTypes' => Display::getDisplayTypes(['id', 'name', 'label', 'description', 'icon']),
       'styles' => \CRM_Utils_Array::makeNonAssociative(self::getStyles()),
-      'defaultPagerSize' => \Civi::settings()->get('default_pager_size'),
+      'defaultPagerSize' => (int) \Civi::settings()->get('default_pager_size'),
       'defaultDisplay' => SearchDisplay::getDefault(FALSE)->setSavedSearch(['id' => NULL])->execute()->first(),
-      'afformEnabled' => $extensions->isActiveModule('afform'),
-      'afformAdminEnabled' => $extensions->isActiveModule('afform_admin'),
-      // TODO: Add v4 API for Extensions
-      'modules' => array_column(civicrm_api3('Extension', 'get', ['status' => "installed"])['values'], 'label', 'key'),
+      'modules' => $extensions,
+      'defaultContactType' => \CRM_Contact_BAO_ContactType::basicTypeInfo()['Individual']['name'] ?? NULL,
+      'defaultDistanceUnit' => \CRM_Utils_Address::getDefaultDistanceUnit(),
       'tags' => Tag::get()
         ->addSelect('id', 'name', 'color', 'is_selectable', 'description')
         ->addWhere('used_for', 'CONTAINS', 'civicrm_saved_search')
@@ -135,9 +137,13 @@ class Admin {
         if ($links) {
           $entity['links'] = array_values($links);
         }
+        $paths = CoreUtil::getInfoItem($entity['name'], 'paths');
+        if (!empty($paths['add'])) {
+          $entity['addPath'] = $paths['add'];
+        }
         $getFields = civicrm_api4($entity['name'], 'getFields', [
-          'select' => ['name', 'title', 'label', 'description', 'type', 'options', 'input_type', 'input_attrs', 'data_type', 'serialize', 'entity', 'fk_entity', 'readonly', 'operators', 'nullable'],
-          'where' => [['name', 'NOT IN', ['api_key', 'hash']]],
+          'select' => ['name', 'title', 'label', 'description', 'type', 'options', 'input_type', 'input_attrs', 'data_type', 'serialize', 'entity', 'fk_entity', 'readonly', 'operators', 'suffixes', 'nullable'],
+          'where' => [['deprecated', '=', FALSE], ['name', 'NOT IN', ['api_key', 'hash']]],
           'orderBy' => ['label'],
         ]);
         foreach ($getFields as $field) {
@@ -191,6 +197,19 @@ class Admin {
             array_splice($entity['fields'], $index, 0, [$newField]);
           }
         }
+        // Useful address fields (see ContactSchemaMapSubscriber)
+        if ($entity['name'] === 'Contact') {
+          $addressFields = ['city', 'state_province_id', 'country_id'];
+          foreach ($addressFields as $fieldName) {
+            foreach (['primary', 'billing'] as $type) {
+              $newField = \CRM_Utils_Array::findAll($schema['Address']['fields'], ['name' => $fieldName])[0];
+              $newField['name'] = "address_$type.$fieldName";
+              $arg = [1 => $newField['label']];
+              $newField['label'] = $type === 'primary' ? ts('Address (primary) %1', $arg) : ts('Address (billing) %1', $arg);
+              $entity['fields'][] = $newField;
+            }
+          }
+        }
       }
     }
     return array_values($schema);
@@ -234,14 +253,14 @@ class Admin {
       }
       // Non-custom DAO entities
       elseif (!empty($entity['dao'])) {
-        /* @var \CRM_Core_DAO $daoClass */
+        /** @var \CRM_Core_DAO $daoClass */
         $daoClass = $entity['dao'];
         $references = $daoClass::getReferenceColumns();
         $fields = array_column($entity['fields'], NULL, 'name');
         $bridge = in_array('EntityBridge', $entity['type']) ? $entity['name'] : NULL;
 
         // Non-bridge joins directly between 2 entities
-        if (!$bridge) {
+        if ($entity['searchable'] !== 'bridge') {
           foreach ($references as $reference) {
             $keyField = $fields[$reference->getReferenceKey()] ?? NULL;
             if (
@@ -289,7 +308,7 @@ class Admin {
           }
         }
         // Bridge joins go through an intermediary table
-        elseif (!empty($entity['bridge'])) {
+        if ($bridge && !empty($entity['bridge'])) {
           foreach ($entity['bridge'] as $targetKey => $bridgeInfo) {
             $baseKey = $bridgeInfo['to'];
             $reference = self::getReference($targetKey, $references);
@@ -454,6 +473,9 @@ class Admin {
       // Normalize this property name to match fields data_type
       $function['data_type'] = $function['dataType'] ?? NULL;
       unset($function['dataType']);
+      if ($function['data_type'] === 'Date') {
+        $function['input_type'] = 'Date';
+      }
       // Filter out empty param properties (simplifies the javascript which treats empty arrays/objects as != null)
       foreach ($function['params'] as $i => $param) {
         $function['params'][$i] = array_filter($param);

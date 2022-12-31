@@ -1,11 +1,11 @@
-{assign var="greeting" value="{contact.email_greeting}"}{if $greeting}{$greeting},{/if}
+{assign var="greeting" value="{contact.email_greeting_display}"}{if $greeting}{$greeting},{/if}
 {if !empty($receipt_text)}
 {$receipt_text}
 {/if}
 {if $is_pay_later}
 
 ===========================================================
-{if isset($pay_later_receipt)}{$pay_later_receipt}{/if}
+{$pay_later_receipt}
 ===========================================================
 {/if}
 
@@ -83,7 +83,7 @@
 --------------------------------------------------------------------------------------------------
 {/if}
 
-{if isset($totalTaxAmount)}
+{if $totalTaxAmount}
 {ts}Total Tax Amount{/ts}: {$totalTaxAmount|crmMoney:$currency}
 {/if}
 

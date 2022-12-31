@@ -23,7 +23,7 @@ class FieldSpec {
   // DataTypeSpecTrait: dataType, serialize, fkEntity
   use \Civi\Schema\Traits\DataTypeSpecTrait;
 
-  // OptionsSpecTrait: options, optionsCallback
+  // OptionsSpecTrait: options, optionsCallback, suffixes
   use \Civi\Schema\Traits\OptionsSpecTrait;
 
   // GuiSpecTrait: label, inputType, inputAttrs, helpPre, helpPost
@@ -79,6 +79,11 @@ class FieldSpec {
    * @var bool
    */
   public $readonly = FALSE;
+
+  /**
+   * @var bool
+   */
+  public $deprecated = FALSE;
 
   /**
    * @var callable[]
@@ -241,6 +246,16 @@ class FieldSpec {
    */
   public function setReadonly($readonly) {
     $this->readonly = (bool) $readonly;
+
+    return $this;
+  }
+
+  /**
+   * @param bool $deprecated
+   * @return $this
+   */
+  public function setDeprecated($deprecated) {
+    $this->deprecated = (bool) $deprecated;
 
     return $this;
   }

@@ -199,10 +199,10 @@ class CRM_Logging_ReportDetail extends CRM_Report_Form {
         }
 
         // special-case for multiple values. Also works for CRM-7251: preferred_communication_method
-        if ((substr($from, 0, 1) == CRM_Core_DAO::VALUE_SEPARATOR &&
-            substr($from, -1, 1) == CRM_Core_DAO::VALUE_SEPARATOR) ||
-          (substr($to, 0, 1) == CRM_Core_DAO::VALUE_SEPARATOR &&
-            substr($to, -1, 1) == CRM_Core_DAO::VALUE_SEPARATOR)
+        if ((substr(($from ?? ''), 0, 1) == CRM_Core_DAO::VALUE_SEPARATOR &&
+            substr(($from ?? ''), -1, 1) == CRM_Core_DAO::VALUE_SEPARATOR) ||
+          (substr(($to ?? ''), 0, 1) == CRM_Core_DAO::VALUE_SEPARATOR &&
+            substr(($to ?? ''), -1, 1) == CRM_Core_DAO::VALUE_SEPARATOR)
         ) {
           $froms = $tos = [];
           foreach (explode(CRM_Core_DAO::VALUE_SEPARATOR, trim($from, CRM_Core_DAO::VALUE_SEPARATOR)) as $val) {
@@ -477,7 +477,7 @@ class CRM_Logging_ReportDetail extends CRM_Report_Form {
    * @return string
    */
   private function convertForeignKeyValuesToLabels(string $fkClassName, string $field, int $keyval): string {
-    if (property_exists($fkClassName, '_labelField')) {
+    if ($fkClassName::$_labelField) {
       $labelValue = CRM_Core_DAO::getFieldValue($fkClassName, $keyval, $fkClassName::$_labelField);
       // Not sure if this should use ts - there's not a lot of context (`%1 (id: %2)`) - and also the similar field labels above don't use ts.
       return "{$labelValue} (id: {$keyval})";

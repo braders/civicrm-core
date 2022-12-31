@@ -88,10 +88,7 @@ class CRM_Event_Form_ManageEvent extends CRM_Core_Form {
    * Set variables up before form is built.
    */
   public function preProcess() {
-    $config = CRM_Core_Config::singleton();
-    if (in_array('CiviEvent', $config->enableComponents)) {
-      $this->assign('CiviEvent', TRUE);
-    }
+    $this->assign('CiviEvent', CRM_Core_Component::isEnabled('CiviEvent'));
     CRM_Core_Form_RecurringEntity::preProcess('civicrm_event');
 
     $this->_action = CRM_Utils_Request::retrieve('action', 'String', $this, FALSE, 'add', 'REQUEST');
@@ -107,8 +104,10 @@ class CRM_Event_Form_ManageEvent extends CRM_Core_Form {
       }
       $this->_single = TRUE;
 
-      $params = ['id' => $this->_id];
-      CRM_Event_BAO_Event::retrieve($params, $eventInfo);
+      $eventInfo = \Civi\Api4\Event::get(FALSE)
+        ->addWhere('id', '=', $this->_id)
+        ->execute()
+        ->first();
 
       // its an update mode, do a permission check
       if (!CRM_Event_BAO_Event::checkPermission($this->_id, CRM_Core_Permission::EDIT)) {
@@ -231,15 +230,15 @@ class CRM_Event_Form_ManageEvent extends CRM_Core_Form {
    */
   public function setDefaultValues() {
     $defaults = [];
+    $event = \Civi\Api4\Event::get(FALSE);
     if (isset($this->_id)) {
-      $params = ['id' => $this->_id];
-      CRM_Event_BAO_Event::retrieve($params, $defaults);
-
+      $event->addWhere('id', '=', $this->_id);
+      $defaults = $event->execute()->first();
       $this->_campaignID = $defaults['campaign_id'] ?? NULL;
     }
     elseif ($this->_templateId) {
-      $params = ['id' => $this->_templateId];
-      CRM_Event_BAO_Event::retrieve($params, $defaults);
+      $event->addWhere('id', '=', $this->_templateId);
+      $defaults = $event->execute()->first();
       $defaults['is_template'] = $this->_isTemplate;
       $defaults['template_id'] = $defaults['id'];
       unset($defaults['id']);
@@ -354,8 +353,7 @@ class CRM_Event_Form_ManageEvent extends CRM_Core_Form {
         [1 => CRM_Utils_Array::value('title', CRM_Utils_Array::value($subPage, $this->get('tabHeader')), $className)]
       ), $this->getTitle(), 'success');
 
-      $config = CRM_Core_Config::singleton();
-      if (in_array('CiviCampaign', $config->enableComponents)) {
+      if (CRM_Core_Component::isEnabled('CiviCampaign')) {
         $values = $this->controller->exportValues($this->_name);
         $newCampaignID = $values['campaign_id'] ?? NULL;
         $eventID = $values['id'] ?? NULL;

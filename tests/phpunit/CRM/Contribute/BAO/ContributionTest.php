@@ -32,6 +32,7 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
    * Clean up after tests.
    */
   public function tearDown(): void {
+    $this->disableFinancialACLs();
     $this->quickCleanUpFinancialEntities();
     parent::tearDown();
   }
@@ -183,9 +184,14 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
   }
 
   /**
-   * DeleteContribution() method
+   * Test contributions are deleted with assets in v3 and v4 api.@\
+   *
+   * @dataProvider versionThreeAndFour
+   *
+   * @param int $version
    */
-  public function testDeleteContribution() {
+  public function testDeleteContribution(int $version): void {
+    $this->_apiversion = $version;
     $contactId = $this->individualCreate();
 
     $params = [
@@ -202,19 +208,14 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
       'total_amount' => 200.00,
       'fee_amount' => 5,
       'net_amount' => 195,
-      'trxn_id' => '33ereerwww322323',
-      'invoice_id' => '33ed39c9e9ee6ef6031621ce0eafe6da70',
-      'thankyou_date' => '20080522',
       'sequential' => TRUE,
     ];
 
     $contribution = $this->callAPISuccess('Contribution', 'create', $params)['values'][0];
 
-    CRM_Contribute_BAO_Contribution::deleteContribution($contribution['id']);
-
-    $this->assertDBNull('CRM_Contribute_DAO_Contribution', $contribution['trxn_id'],
-      'id', 'trxn_id', 'Database check for deleted Contribution.'
-    );
+    $this->callAPISuccess('Contribution', 'delete', ['id' => $contribution['id']]);
+    $this->callAPISuccessGetCount('Contribution', [], 0);
+    $this->callAPISuccessGetCount('LineItem', [], 0);
   }
 
   /**
@@ -308,18 +309,17 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
   /**
    * Test that financial type data is not added to the annual query if acls not enabled.
    */
-  public function testAnnualQueryWithFinancialACLsEnabled() {
+  public function testAnnualQueryWithFinancialACLsEnabled(): void {
     $this->enableFinancialACLs();
     $this->createLoggedInUserWithFinancialACL();
     $permittedFinancialType = CRM_Core_PseudoConstant::getKey('CRM_Contribute_BAO_Contribution', 'financial_type_id', 'Donation');
     $sql = CRM_Contribute_BAO_Contribution::getAnnualQuery([1, 2, 3]);
     $this->assertStringContainsString('SUM(total_amount) as amount,', $sql);
-    $this->assertStringContainsString('WHERE b.contact_id IN (1,2,3)', $sql);
+    $this->assertStringContainsString('b.contact_id IN (1,2,3)', $sql);
     $this->assertStringContainsString('b.financial_type_id IN (' . $permittedFinancialType . ')', $sql);
 
     // Run it to make sure it's not bad sql.
     CRM_Core_DAO::executeQuery($sql);
-    $this->disableFinancialACLs();
   }
 
   /**
@@ -343,10 +343,10 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
   /**
    * Test that financial type data is not added to the annual query if acls not enabled.
    */
-  public function testAnnualQueryWithFinancialACLsDisabled() {
+  public function testAnnualQueryWithFinancialACLsDisabled(): void {
     $sql = CRM_Contribute_BAO_Contribution::getAnnualQuery([1, 2, 3]);
     $this->assertStringContainsString('SUM(total_amount) as amount,', $sql);
-    $this->assertStringContainsString('WHERE b.contact_id IN (1,2,3)', $sql);
+    $this->assertStringContainsString('b.contact_id IN (1,2,3)', $sql);
     $this->assertStringNotContainsString('b.financial_type_id', $sql);
     //$this->assertNotContains('line_item', $sql);
     // Run it to make sure it's not bad sql.
@@ -356,12 +356,12 @@ class CRM_Contribute_BAO_ContributionTest extends CiviUnitTestCase {
   /**
    * Test that financial type data is not added to the annual query if acls not enabled.
    */
-  public function testAnnualQueryWithFinancialHook() {
+  public function testAnnualQueryWithFinancialHook(): void {
     $this->hookClass->setHook('civicrm_selectWhereClause', [$this, 'aclIdNoZero']);
     $sql = CRM_Contribute_BAO_Contribution::getAnnualQuery([1, 2, 3]);
     $this->assertStringContainsString('SUM(total_amount) as amount,', $sql);
-    $this->assertStringContainsString('WHERE b.contact_id IN (1,2,3)', $sql);
-    $this->assertStringContainsString('b.id NOT IN (0)', $sql);
+    $this->assertStringContainsString('b.contact_id IN (1,2,3)', $sql);
+    $this->assertStringContainsString('WHERE b.id NOT IN (0)', $sql);
     $this->assertStringNotContainsString('b.financial_type_id', $sql);
     CRM_Core_DAO::executeQuery($sql);
   }
@@ -672,7 +672,6 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
    * assignProportionalLineItems() method (add and edit modes of participant)
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testAssignProportionalLineItems(): void {
     // This test doesn't seem to manage financials properly, possibly by design
@@ -699,7 +698,6 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
    * @return CRM_Contribute_BAO_Contribution
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function addParticipantWithContribution() {
     // creating price set, price field
@@ -967,7 +965,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
   /**
    * Test for function getSalesTaxFinancialAccounts().
    */
-  public function testgetSalesTaxFinancialAccounts() {
+  public function testGetSalesTaxFinancialAccounts(): void {
     $this->enableTaxAndInvoicing();
     $financialType = $this->createFinancialType();
     $financialAccount = $this->addTaxAccountToFinancialType($financialType['id']);
@@ -976,7 +974,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
     $financialAccount = $this->addTaxAccountToFinancialType($financialType['id']);
     $expectedResult[$financialAccount->financial_account_id] = $financialAccount->financial_account_id;
     $salesTaxFinancialAccount = CRM_Contribute_BAO_Contribution::getSalesTaxFinancialAccounts();
-    $this->assertTrue(($salesTaxFinancialAccount == $expectedResult), 'Function returned wrong values.');
+    $this->assertEquals($salesTaxFinancialAccount, $expectedResult);
   }
 
   /**
@@ -1024,7 +1022,6 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
    *   punctuation used to refer to thousands.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider getThousandSeparators
    */
   public function testCreateProportionalEntryZeroAmount(string $thousandSeparator): void {
@@ -1137,7 +1134,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
     $this->enableTaxAndInvoicing();
     $financialType = $this->createFinancialType();
     $financialAccount = $this->addTaxAccountToFinancialType($financialType['id']);
-    /* @var CRM_Contribute_Form_Contribution $form */
+    /** @var CRM_Contribute_Form_Contribution $form */
     $form = $this->getFormObject('CRM_Contribute_Form_Contribution', [
       'total_amount' => $params['total_amount'],
       'financial_type_id' => $financialType['id'],
@@ -1236,79 +1233,9 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
   }
 
   /**
-   * Test for replaceContributionTokens.
-   *
-   * This function tests whether the contribution tokens are replaced with
-   * values from contribution.
-   *
-   * @throws \CiviCRM_API3_Exception
-   */
-  public function testReplaceContributionTokens(): void {
-    $customGroup = $this->customGroupCreate(['extends' => 'Contribution', 'title' => 'contribution stuff']);
-    $customField = $this->customFieldOptionValueCreate($customGroup, 'myCustomField');
-    $contactId1 = $this->individualCreate();
-    $params = [
-      'contact_id' => $contactId1,
-      'receive_date' => '20120511',
-      'total_amount' => 100.00,
-      'financial_type_id' => 1,
-      'trxn_id' => 12345,
-      'invoice_id' => 67890,
-      'source' => 'SSF',
-      'contribution_status_id' => 2,
-      "custom_{$customField['id']}" => 'value1',
-      'currency' => 'EUR',
-    ];
-    $contribution1 = $this->contributionCreate($params);
-    $contactId2 = $this->individualCreate();
-    $params = [
-      'contact_id' => $contactId2,
-      'receive_date' => '20150511',
-      'total_amount' => 200.00,
-      'financial_type_id' => 1,
-      'trxn_id' => 6789,
-      'invoice_id' => 12345,
-      'source' => 'ABC',
-      'contribution_status_id' => 1,
-      "custom_{$customField['id']}" => 'value2',
-    ];
-    $contribution2 = $this->contributionCreate($params);
-    $ids = [$contribution1, $contribution2];
-
-    $subject = 'This is a test for contribution ID: {contribution.contribution_id}';
-    $text = 'Contribution Amount: {contribution.total_amount}';
-    $html = "<p>Contribution Source: {contribution.contribution_source}</p></br>
-      <p>Contribution Invoice ID: {contribution.invoice_id}</p></br>
-      <p>Contribution Receive Date: {contribution.receive_date}</p></br>
-      <p>Contribution Custom Field: {contribution.custom_{$customField['id']}}</p></br>
-      {contribution.contribution_status_id:name}";
-
-    $subjectToken = CRM_Utils_Token::getTokens($subject);
-    $messageToken = CRM_Utils_Token::getTokens($text);
-    $messageToken = array_merge($messageToken, CRM_Utils_Token::getTokens($html));
-
-    $contributionDetails = CRM_Contribute_BAO_Contribution::replaceContributionTokens(
-      $ids,
-      $subject,
-      $subjectToken,
-      $text,
-      $html,
-      $messageToken,
-      TRUE
-    );
-
-    $this->assertEquals('Contribution Amount: € 100.00', $contributionDetails[$contactId1]['text'], 'The text does not match');
-    $this->assertEquals('<p>Contribution Source: ABC</p></br>
-      <p>Contribution Invoice ID: 12345</p></br>
-      <p>Contribution Receive Date: May 11th, 2015 12:00 AM</p></br>
-      <p>Contribution Custom Field: Label2</p></br>
-      Completed', $contributionDetails[$contactId2]['html'], 'The html does not match');
-  }
-
-  /**
    * Test for contribution with deferred revenue.
    */
-  public function testContributionWithDeferredRevenue() {
+  public function testContributionWithDeferredRevenue(): void {
     $contactId = $this->individualCreate();
     Civi::settings()->set('deferred_revenue_enabled', TRUE);
     $params = [
@@ -1503,9 +1430,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
    * The pledge status should be updated. I believe the contribution should
    * also be unlinked but the goal at this point is no change.
    *
-   * @throws CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public function testCancelOrderWithPledge(): void {
     $this->ids['contact'][0] = $this->individualCreate();
@@ -1528,9 +1453,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
    * Test contribution update when more than one quick
    * config line item is linked to contribution.
    *
-   * @throws CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public function testContributionQuickConfigTwoLineItems(): void {
     $contactId1 = $this->individualCreate();
@@ -1738,7 +1661,7 @@ WHERE eft.entity_id = %1 AND ft.to_financial_account_id <> %2";
   /**
    * Test status updates triggering activity creation and value propagation
    *
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   public function testContributionStatusUpdateActivityPropagation() {

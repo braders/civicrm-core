@@ -166,8 +166,6 @@ abstract class CRM_Core_Page_Basic extends CRM_Core_Page {
     // get 'id' if present
     $id = CRM_Utils_Request::retrieve('id', 'Positive', $this, FALSE, 0);
 
-    require_once str_replace('_', DIRECTORY_SEPARATOR, $this->getBAOName()) . ".php";
-
     if ($id) {
       if (!$this->checkPermission($id, NULL)) {
         CRM_Core_Error::statusBounce(ts('You do not have permission to make changes to the record'));
@@ -362,7 +360,7 @@ abstract class CRM_Core_Page_Basic extends CRM_Core_Page {
       $key = 'name';
     }
 
-    if (trim($sort)) {
+    if (trim($sort ?? '')) {
       $object->orderBy($sort);
     }
     elseif ($key) {

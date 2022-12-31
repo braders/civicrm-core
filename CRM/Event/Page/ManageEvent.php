@@ -123,7 +123,7 @@ class CRM_Event_Page_ManageEvent extends CRM_Core_Page {
    *
    * @return array
    *   (reference) of tab links
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function &tabs() {
     // @todo Move to eventcart extension
@@ -147,13 +147,16 @@ class CRM_Event_Page_ManageEvent extends CRM_Core_Page {
           'url' => 'civicrm/event/manage/location',
           'field' => 'loc_block_id',
         ];
+      // If CiviContribute is active, create the Fees dropdown menu item.
+      if (CRM_Core_Component::isEnabled('CiviContribute')) {
+        self::$_tabLinks[$cacheKey]['fee']
+          = [
+            'title' => ts('Fees'),
+            'url' => 'civicrm/event/manage/fee',
+            'field' => 'is_monetary',
+          ];
+      }
 
-      self::$_tabLinks[$cacheKey]['fee']
-        = [
-          'title' => ts('Fees'),
-          'url' => 'civicrm/event/manage/fee',
-          'field' => 'is_monetary',
-        ];
       self::$_tabLinks[$cacheKey]['registration']
         = [
           'title' => ts('Online Registration'),
@@ -282,7 +285,7 @@ class CRM_Event_Page_ManageEvent extends CRM_Core_Page {
       $this
     );
     $createdId = CRM_Utils_Request::retrieve('cid', 'Positive', $this, FALSE, 0);
-    if (strtolower($this->_sortByCharacter) == 'all' ||
+    if ((!empty($this->_sortByCharacter) && strtolower($this->_sortByCharacter) == 'all') ||
       !empty($_POST)
     ) {
       $this->_sortByCharacter = '';
@@ -360,19 +363,6 @@ ORDER BY start_date desc
           $manageEvent[$dao->id]['repeat'] = ts('Repeating (%1 of %2)', [1 => $repeat[0], 2 => $repeat[1]]);
         }
         CRM_Core_DAO::storeValues($dao, $manageEvent[$dao->id]);
-
-        // avoid enotices
-        foreach (CRM_Event_BAO_Event::tz_fields as $field) {
-          $manageEvent[$dao->id][$field . '_with_tz'] = NULL;
-        }
-        if (!is_null($dao->event_tz) && $dao->event_tz != CRM_Core_Config::singleton()->userSystem->getTimeZoneString()) {
-          foreach (CRM_Event_BAO_Event::tz_fields as $field) {
-            if (!empty($dao->{$field})) {
-              $manageEvent[$dao->id][$field . '_with_tz'] = CRM_Utils_Date::convertTimeZone($dao->{$field}, $dao->event_tz);
-            }
-          }
-        }
-        $manageEvent[$dao->id]['event_tz'] = $dao->event_tz ? CRM_Core_SelectValues::timezone()[$dao->event_tz] : FALSE;
 
         // form all action links
         $action = array_sum(array_keys($this->links()));

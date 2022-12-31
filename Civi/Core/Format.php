@@ -9,16 +9,18 @@ use Civi;
 use CRM_Core_Config;
 use CRM_Core_I18n;
 use CRM_Utils_Constant;
+use CRM_Utils_Money;
 use NumberFormatter;
 use Brick\Money\Context\AutoContext;
 
 /**
  * Class Paths
  * @package Civi\Core
+ * @service format
  *
  * This class provides standardised formatting
  */
-class Format {
+class Format extends \Civi\Core\Service\AutoService {
 
   /**
    * Get formatted money
@@ -29,6 +31,8 @@ class Format {
    * @param string|null $locale
    *
    * @return string
+   *
+   * @throws \CRM_Core_Exception
    *
    * @noinspection PhpDocMissingThrowsInspection
    * @noinspection PhpUnhandledExceptionInspection
@@ -41,9 +45,11 @@ class Format {
       $currency = Civi::settings()->get('defaultCurrency');
     }
     if (!isset($locale)) {
-      $locale = CRM_Core_I18n::getLocale();
+      global $civicrmLocale;
+      $locale = $civicrmLocale->moneyFormat ?? (Civi::settings()->get('format_locale') ?? CRM_Core_I18n::getLocale());
     }
-    $money = Money::of($amount, $currency, NULL, RoundingMode::HALF_UP);
+    $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
+    $money = Money::of($amount, $currencyObject, NULL, RoundingMode::HALF_UP);
     $formatter = $this->getMoneyFormatter($currency, $locale);
     return $money->formatWith($formatter);
   }
@@ -61,6 +67,7 @@ class Format {
    *   add any padding.
    *
    * @return string
+   * @throws \CRM_Core_Exception
    */
   public function number($amount, ?string $locale = NULL, array $attributes = [
     NumberFormatter::MIN_FRACTION_DIGITS => 0,
@@ -90,8 +97,36 @@ class Format {
       return '';
     }
     $formatter = $this->getMoneyFormatter($currency, $locale, NumberFormatter::DECIMAL);
-    $money = Money::of($amount, $currency, NULL, RoundingMode::HALF_UP);
-    return $money->formatWith($formatter);
+    $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
+    return Money::of($amount, $currencyObject, NULL, RoundingMode::HALF_UP)->formatWith($formatter);
+  }
+
+  /**
+   * Get a number formatted to a machine format with padded decimal places.
+   *
+   * This is intended to be a machine-friendly format that is also suitable
+   * for sending out to other systems that might expect 2 digits after the
+   * decimal point.
+   *
+   * Most currencies format to 2 decimal places so the default of 'USD' will
+   * achieve that.
+   *
+   * For example an input of 1000.1 will return 1000.10.
+   *
+   * This will ensure that
+   *
+   * @param string|float|int $amount
+   * @param string $currency
+   *
+   * @return string
+   *
+   * @noinspection PhpDocMissingThrowsInspection
+   * @noinspection PhpUnhandledExceptionInspection
+   */
+  public function machineMoney($amount, string $currency = 'USD'): string {
+    $formatter = $this->getMoneyFormatter($currency, 'en_US', NumberFormatter::DECIMAL, [NumberFormatter::GROUPING_USED => FALSE]);
+    $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
+    return Money::of($amount, $currencyObject, NULL, RoundingMode::HALF_UP)->formatWith($formatter);
   }
 
   /**
@@ -113,7 +148,8 @@ class Format {
     $formatter = $this->getMoneyFormatter($currency, $locale, NumberFormatter::CURRENCY, [
       NumberFormatter::MAX_FRACTION_DIGITS => 9,
     ]);
-    $money = Money::of($amount, $currency, new AutoContext());
+    $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
+    $money = Money::of($amount, $currencyObject, new AutoContext());
     return $money->formatWith($formatter);
   }
 
@@ -136,18 +172,26 @@ class Format {
     $formatter = $this->getMoneyFormatter($currency, $locale, NumberFormatter::DECIMAL, [
       NumberFormatter::MAX_FRACTION_DIGITS => 9,
     ]);
-    $money = Money::of($amount, $currency, new AutoContext());
+    $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
+    $money = Money::of($amount, $currencyObject, new AutoContext());
     return $money->formatWith($formatter);
   }
 
   /**
    * Should we use the configured thousand & decimal separators.
    *
-   * The goal is to phase this into being FALSE - but for now
-   * we are looking at how to manage an 'opt in'
+   * Historically, separators were configured with system-settings, but this is problematic
+   * when you have multiple locales with divergent separator rules (eg en_GB / fr_FR).
+   * The goal is to transition to locale-based-separators instead of setting-based-separators;
+   * but for now, we only switch if there's an opt-in flag.
    */
   protected function isUseSeparatorSettings(): bool {
-    return !CRM_Utils_Constant::value('IGNORE_SEPARATOR_CONFIG');
+    // If system enables `format_locale`, then abide the specified locale (regardless of old separator settings).
+    // If system enables IGNORE_SEPARATOR_CONFIG, then abide the active locale's spec (regardless of old separator settings).
+    // If system enables `partial_locales`, then abide active locale's spec (regardless of old separator settings).
+    return !Civi::settings()->get('format_locale')
+      && !CRM_Utils_Constant::value('IGNORE_SEPARATOR_CONFIG')
+      && !Civi::settings()->get('partial_locales');
   }
 
   /**
@@ -171,17 +215,18 @@ class Format {
     if (!$currency) {
       $currency = Civi::settings()->get('defaultCurrency');
     }
+    $locale = $locale ?: \Civi\Core\Locale::detect()->moneyFormat;
+
     $cacheKey = __CLASS__ . $currency . '_' . $locale . '_' . $style . (!empty($attributes) ? md5(json_encode($attributes)) : '');
     if (!isset(\Civi::$statics[$cacheKey])) {
       $formatter = new NumberFormatter($locale, $style);
 
+      $currencyObject = CRM_Utils_Money::getCurrencyObject($currency);
       if (!isset($attributes[NumberFormatter::MIN_FRACTION_DIGITS])) {
-        $attributes[NumberFormatter::MIN_FRACTION_DIGITS] = Currency::of($currency)
-          ->getDefaultFractionDigits();
+        $attributes[NumberFormatter::MIN_FRACTION_DIGITS] = $currencyObject->getDefaultFractionDigits();
       }
       if (!isset($attributes[NumberFormatter::MAX_FRACTION_DIGITS])) {
-        $attributes[NumberFormatter::MAX_FRACTION_DIGITS] = Currency::of($currency)
-          ->getDefaultFractionDigits();
+        $attributes[NumberFormatter::MAX_FRACTION_DIGITS] = $currencyObject->getDefaultFractionDigits();
       }
 
       foreach ($attributes as $attribute => $value) {
@@ -214,7 +259,7 @@ class Format {
     }
     // Verify the amount is a number or numeric string/object.
     // We cast to string because it can be a BigDecimal object.
-    elseif ($amount === TRUE || !is_numeric((string) $amount)) {
+    if ($amount === TRUE || !is_numeric((string) $amount)) {
       throw new \CRM_Core_Exception('Invalid value for type money');
     }
     return (string) $amount;

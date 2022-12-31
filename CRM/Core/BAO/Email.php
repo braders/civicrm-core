@@ -20,7 +20,7 @@ use Civi\Api4\Email;
 /**
  * This class contains functions for email handling.
  */
-class CRM_Core_BAO_Email extends CRM_Core_DAO_Email implements Civi\Test\HookInterface {
+class CRM_Core_BAO_Email extends CRM_Core_DAO_Email implements Civi\Core\HookInterface {
   use CRM_Contact_AccessTrait;
 
   /**
@@ -400,7 +400,7 @@ AND    reset_date IS NULL
    *
    * @return array
    *
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   public static function getEmailSignatureDefaults(int $emailID): array {

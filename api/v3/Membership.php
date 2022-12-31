@@ -39,7 +39,7 @@ function _civicrm_api3_membership_delete_spec(&$params) {
  * @param array $params
  *   Array array holding id - Id of the contact membership to be deleted.
  * @return array API result array.
- * @throws API_Exception
+ * @throws CRM_Core_Exception
  */
 function civicrm_api3_membership_delete($params) {
   if (isset($params['preserve_contribution'])) {
@@ -47,7 +47,7 @@ function civicrm_api3_membership_delete($params) {
       return civicrm_api3_create_success(TRUE, $params);
     }
     else {
-      throw new API_Exception(ts('Could not delete membership'));
+      throw new CRM_Core_Exception(ts('Could not delete membership'));
     }
   }
   else {
@@ -68,7 +68,6 @@ function civicrm_api3_membership_delete($params) {
  *   API result array.
  *
  * @throws \CRM_Core_Exception
- * @throws \CiviCRM_API3_Exception
  */
 function civicrm_api3_membership_create($params) {
   // check params for membership id during update
@@ -236,34 +235,6 @@ function civicrm_api3_membership_get($params) {
 
   $members = _civicrm_api3_membership_relationsship_get_customv2behaviour($params, $membershipValues, $contactID);
   return civicrm_api3_create_success($members, $params, 'Membership', 'get');
-}
-
-/**
- * Perform api v2 custom behaviour.
- *
- * When we copied apiv3 from api v2 we brought across some custom behaviours - in the case of
- * membership a complicated return array is constructed. The original
- * behaviour made contact_id a required field. We still need to keep this for v3 when contact_id
- * is passed in as part of the reasonable expectation developers have that we will keep the api
- * as stable as possible
- *
- * @param array $params
- *   Parameters passed into get function.
- * @param int $membershipTypeId
- * @param bool $activeOnly
- *
- * @return array
- *   result for calling function
- */
-function _civicrm_api3_membership_get_customv2behaviour(&$params, $membershipTypeId, $activeOnly) {
-  // get the membership for the given contact ID
-  $membershipParams = ['contact_id' => $params['contact_id']];
-  if ($membershipTypeId) {
-    $membershipParams['membership_type_id'] = $membershipTypeId;
-  }
-  $membershipValues = [];
-  CRM_Member_BAO_Membership::getValues($membershipParams, $membershipValues, $activeOnly);
-  return $membershipValues;
 }
 
 /**

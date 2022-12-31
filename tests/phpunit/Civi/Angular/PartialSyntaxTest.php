@@ -85,6 +85,8 @@ class PartialSyntaxTest extends \CiviUnitTestCase {
   /**
    */
   public function testAllPartials() {
+    $this->markTestIncomplete('checkConsistentHtml gives too many false-positive errors to be useful in a unit test.');
+
     $coder = new \Civi\Angular\Coder();
     $errors = [];
     $count = 0;
@@ -94,7 +96,7 @@ class PartialSyntaxTest extends \CiviUnitTestCase {
         $count++;
         if (!$coder->checkConsistentHtml($html)) {
           $recodedHtml = $coder->recode($html);
-          $this->assertEquals($html, $recodedHtml, "File $path has inconsistent HTML. Use tools/scripts/check-angular.php to debug. ");
+          $this->assertEquals($recodedHtml, $html, "File $path has inconsistent HTML. Use tools/scripts/check-angular.php to debug. ");
         }
       }
     }

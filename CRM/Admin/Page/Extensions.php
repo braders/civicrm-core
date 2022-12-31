@@ -155,6 +155,7 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
     $keys = array_keys($manager->getStatuses());
     sort($keys);
     $hiddenExtensions = $mapper->getKeysByTag('mgmt:hidden');
+    $requiredExtensions = $mapper->getKeysByTag('mgmt:required');
     foreach ($keys as $key) {
       if (in_array($key, $hiddenExtensions)) {
         continue;
@@ -202,7 +203,7 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
       }
       // TODO if extbrowser is enabled and extbrowser has newer version than extcontainer,
       // then $action += CRM_Core_Action::UPDATE
-      if ($action) {
+      if ($action && !in_array($key, $requiredExtensions)) {
         $row['action'] = CRM_Core_Action::formLink(self::links(),
           $action,
           ['id' => $row['id'], 'key' => $obj->key],
@@ -246,7 +247,7 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
       if (!empty($compat[$info->key]['obsolete'])) {
         continue;
       }
-      $row = (array) $info;
+      $row = self::fillMissingInfoKeys((array) $info);
       $row['id'] = $info->key;
       $row['upgradelink'] = '';
       $action = CRM_Core_Action::UPDATE;
@@ -330,7 +331,35 @@ class CRM_Admin_Page_Extensions extends CRM_Core_Page_Basic {
    * @return array
    */
   public static function createExtendedInfo(CRM_Extension_Info $obj) {
-    return CRM_Extension_System::createExtendedInfo($obj);
+    return self::fillMissingInfoKeys(CRM_Extension_System::createExtendedInfo($obj));
+  }
+
+  /**
+   * Extension templates expect certain keys to always be set, but these might be missing from the relevant info.xml files
+   * This ensures the expect keys are always set.
+   *
+   * @param array $info
+   * @return array
+   */
+  private static function fillMissingInfoKeys(array $info) {
+    $defaultKeys = [
+      'urls' => [],
+      'authors' => [],
+      'version' => '',
+      'description' => '',
+      'license' => '',
+      'path' => '',
+      'releaseDate' => '',
+      'downloadUrl' => FALSE,
+      'compatibility' => FALSE,
+      'develStage' => FALSE,
+      'comments' => FALSE,
+    ];
+    $info = array_merge($defaultKeys, $info);
+    foreach ($info['authors'] as &$author) {
+      $author = array_merge(['homepage' => ''], $author);
+    }
+    return $info;
   }
 
 }

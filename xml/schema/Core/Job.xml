@@ -130,6 +130,12 @@
     <title>Job Is Active?</title>
     <type>boolean</type>
     <comment>Is this job active?</comment>
+    <default>1</default>
+    <html>
+      <type>CheckBox</type>
+      <label>Enabled</label>
+    </html>
+    <required>true</required>
     <add>4.1</add>
   </field>
 </table>

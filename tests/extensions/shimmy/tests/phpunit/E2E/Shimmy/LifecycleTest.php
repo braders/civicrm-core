@@ -28,7 +28,7 @@ class E2E_Shimmy_LifecycleTest extends \PHPUnit\Framework\TestCase implements \C
     $mixinTestFiles = (array) glob($this->getPath('/tests/mixin/*Test.php'));
     foreach ($mixinTestFiles as $file) {
       require_once $file;
-      $class = '\\Civi\Shimmy\\Mixins\\' . preg_replace(';\.php$;', '', basename($file));
+      $class = '\\Civi\Shimmy\\Mixins\\' . basename($file, '.php');
       $this->mixinTests[] = new $class();
     }
   }
@@ -109,6 +109,15 @@ class E2E_Shimmy_LifecycleTest extends \PHPUnit\Framework\TestCase implements \C
         return (array) civicrm_api4($entity, $action, $params);
       }
 
+      public function phpCall($func, array $args = []) {
+        return call_user_func_array($func, $args);
+      }
+
+      public function phpEval(string $expr) {
+        // phpcs:ignore
+        return eval($expr);
+      }
+
     };
   }
 
@@ -122,6 +131,14 @@ class E2E_Shimmy_LifecycleTest extends \PHPUnit\Framework\TestCase implements \C
       public function api4($entity, $action, $params): array {
         $params = array_merge(['checkPermissions' => FALSE], $params);
         return $this->cv('api4 --in=json ' . escapeshellarg("$entity.$action"), json_encode($params));
+      }
+
+      public function phpCall($func, array $args = []) {
+        return $this->phpEval(sprintf('return call_user_func_array(%s, %s);', var_export($func, 1), var_export($args, 1)));
+      }
+
+      public function phpEval(string $expr) {
+        return $this->cv('php:eval ' . escapeshellarg($expr));
       }
 
       /**

@@ -66,6 +66,7 @@ class CRM_Core_BAO_Address extends CRM_Core_DAO_Address {
     CRM_Utils_Hook::pre($hook, 'Address', CRM_Utils_Array::value('id', $params), $params);
 
     CRM_Core_BAO_Block::handlePrimary($params, get_class());
+    CRM_Core_BAO_Block::handleBilling($params, get_class());
 
     // (prevent chaining 1 and 3) CRM-21214
     if (isset($params['master_id']) && !CRM_Utils_System::isNull($params['master_id'])) {
@@ -478,7 +479,7 @@ class CRM_Core_BAO_Address extends CRM_Core_DAO_Address {
       // added this for CRM 1200
       'address_id' => $this->id,
       // CRM-4003
-      'address_name' => str_replace('', ' ', $this->name),
+      'address_name' => str_replace('', ' ', ($this->name ?? '')),
       'street_address' => $this->street_address,
       'supplemental_address_1' => $this->supplemental_address_1,
       'supplemental_address_2' => $this->supplemental_address_2,
@@ -773,7 +774,7 @@ ORDER BY civicrm_address.is_primary DESC, civicrm_address.location_type_id DESC,
     // the DB to fatal
     $fields = CRM_Core_BAO_Address::fields();
     foreach ($fields as $fieldname => $field) {
-      if (!empty($field['maxlength']) && strlen(CRM_Utils_Array::value($fieldname, $parseFields)) > $field['maxlength']) {
+      if (!empty($field['maxlength']) && strlen(($parseFields[$fieldname] ?? '')) > $field['maxlength']) {
         return $emptyParseFields;
       }
     }
@@ -1124,7 +1125,7 @@ SELECT is_primary,
 
     // If already there is a relationship record of $relParam criteria, avoid creating relationship again or else
     // it will casue CRM-16588 as the Duplicate Relationship Exception will revert other contact field values on update
-    if (CRM_Contact_BAO_Relationship::checkDuplicateRelationship($relParam, $currentContactId, $sharedContactId)) {
+    if (CRM_Contact_BAO_Relationship::checkDuplicateRelationship($relParam, (int) $currentContactId, (int) $sharedContactId)) {
       return;
     }
 
@@ -1132,7 +1133,7 @@ SELECT is_primary,
       // create relationship
       civicrm_api3('relationship', 'create', $relParam);
     }
-    catch (CiviCRM_API3_Exception $e) {
+    catch (CRM_Core_Exception $e) {
       // We catch and ignore here because this has historically been a best-effort relationship create call.
       // presumably it could refuse due to duplication or similar and we would ignore that.
     }
@@ -1313,7 +1314,10 @@ SELECT is_primary,
     // core#2379 - Limit geocode length to 14 characters to avoid validation error on save in UI.
     foreach (['geo_code_1', 'geo_code_2'] as $geocode) {
       if ($params[$geocode] ?? FALSE) {
-        $params[$geocode] = (float) substr($params[$geocode], 0, 14);
+        // ensure that if the geocoding provider (Google, OSM etc) has returned the string 'null' because they can't geocode, ensure that contacts are not placed on null island 0,0
+        if ($params[$geocode] !== 'null') {
+          $params[$geocode] = (float) substr($params[$geocode], 0, 14);
+        }
       }
     }
     return $providerExists;

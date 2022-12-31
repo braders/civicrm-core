@@ -5,39 +5,6 @@ require_once 'authx.civix.php';
 use CRM_Authx_ExtensionUtil as E;
 // phpcs:enable
 
-Civi::dispatcher()->addListener('civi.invoke.auth', function($e) {
-  $params = ($_SERVER['REQUEST_METHOD'] === 'GET') ? $_GET : $_POST;
-  $siteKey = $_SERVER['HTTP_X_CIVI_KEY'] ?? $params['_authxSiteKey'] ?? NULL;
-
-  if (!empty($_SERVER['HTTP_X_CIVI_AUTH'])) {
-    return (new \Civi\Authx\Authenticator())->auth($e, ['flow' => 'xheader', 'cred' => $_SERVER['HTTP_X_CIVI_AUTH'], 'siteKey' => $siteKey]);
-  }
-
-  if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
-    return (new \Civi\Authx\Authenticator())->auth($e, ['flow' => 'header', 'cred' => $_SERVER['HTTP_AUTHORIZATION'], 'siteKey' => $siteKey]);
-  }
-
-  if (!empty($params['_authx'])) {
-    if ((implode('/', $e->args) === 'civicrm/authx/login')) {
-      (new \Civi\Authx\Authenticator())->auth($e, ['flow' => 'login', 'cred' => $params['_authx'], 'useSession' => TRUE, 'siteKey' => $siteKey]);
-      _authx_redact(['_authx']);
-    }
-    elseif (!empty($params['_authxSes'])) {
-      (new \Civi\Authx\Authenticator())->auth($e, ['flow' => 'auto', 'cred' => $params['_authx'], 'useSession' => TRUE, 'siteKey' => $siteKey]);
-      if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        _authx_reload(implode('/', $e->args), $_SERVER['QUERY_STRING']);
-      }
-      else {
-        _authx_redact(['_authx', '_authxSes']);
-      }
-    }
-    else {
-      (new \Civi\Authx\Authenticator())->auth($e, ['flow' => 'param', 'cred' => $params['_authx'], 'siteKey' => $siteKey]);
-      _authx_redact(['_authx']);
-    }
-  }
-});
-
 /**
  * Perform a system login.
  *
@@ -130,6 +97,7 @@ function authx_civicrm_config(&$config) {
  */
 function authx_civicrm_install() {
   _authx_civix_civicrm_install();
+
 }
 
 /**
@@ -157,6 +125,13 @@ function authx_civicrm_uninstall() {
  */
 function authx_civicrm_enable() {
   _authx_civix_civicrm_enable();
+  // If the system is already using HTTP `Authorization:` headers before installation/re-activation, then
+  // it's probably an extra/independent layer of security.
+  // Only activate support for `Authorization:` if this looks like a clean/amenable environment.
+  // @link https://github.com/civicrm/civicrm-core/pull/22837
+  if (empty($_SERVER['HTTP_AUTHORIZATION']) && NULL === Civi::settings()->getExplicit('authx_header_cred')) {
+    Civi::settings()->set('authx_header_cred', ['jwt', 'api_key']);
+  }
 }
 
 /**
@@ -214,14 +189,14 @@ function authx_civicrm_permission(&$permissions) {
  *
  * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_navigationMenu
  */
-//function authx_civicrm_navigationMenu(&$menu) {
-//  _authx_civix_insert_navigation_menu($menu, 'Mailings', array(
-//    'label' => E::ts('New subliminal message'),
-//    'name' => 'mailing_subliminal_message',
-//    'url' => 'civicrm/mailing/subliminal',
-//    'permission' => 'access CiviMail',
-//    'operator' => 'OR',
-//    'separator' => 0,
-//  ));
-//  _authx_civix_navigationMenu($menu);
-//}
+function authx_civicrm_navigationMenu(&$menu) {
+  _authx_civix_insert_navigation_menu($menu, 'Administer/System Settings', [
+    'label' => E::ts('Authentication'),
+    'name' => 'authx_admin',
+    'url' => 'civicrm/admin/setting/authx',
+    'permission' => 'administer CiviCRM',
+    'operator' => 'OR',
+    'separator' => 0,
+  ]);
+  _authx_civix_navigationMenu($menu);
+}

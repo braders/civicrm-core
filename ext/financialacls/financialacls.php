@@ -3,6 +3,7 @@
 require_once 'financialacls.civix.php';
 // phpcs:disable
 use Civi\Api4\EntityFinancialAccount;
+use Civi\Api4\MembershipType;
 use CRM_Financialacls_ExtensionUtil as E;
 // phpcs:enable
 
@@ -97,7 +98,6 @@ function financialacls_civicrm_entityTypes(&$entityTypes) {
  * @param int|null $id
  * @param array $params
  *
- * @throws \API_Exception
  * @throws \CRM_Core_Exception
  */
 function financialacls_civicrm_pre($op, $objectName, $id, &$params) {
@@ -111,7 +111,7 @@ function financialacls_civicrm_pre($op, $objectName, $id, &$params) {
       $params['financial_type_id'] = CRM_Core_DAO::getFieldValue('CRM_Price_DAO_LineItem', $params['id'], 'financial_type_id');
     }
     if (!array_key_exists($params['financial_type_id'], $types)) {
-      throw new API_Exception('You do not have permission to ' . $op . ' this line item');
+      throw new CRM_Core_Exception('You do not have permission to ' . $op . ' this line item');
     }
   }
   if ($objectName === 'FinancialType' && !empty($params['id']) && !empty($params['name'])) {
@@ -141,6 +141,10 @@ function financialacls_civicrm_selectWhereClause($entity, &$clauses) {
     case 'ContributionRecur':
     case 'Contribution':
       $clauses['financial_type_id'] = _financialacls_civicrm_get_type_clause();
+      break;
+
+    case 'Membership':
+      $clauses['membership_type_id'] = _financialacls_civicrm_get_membership_type_clause();
       break;
 
     case 'FinancialType':
@@ -179,7 +183,7 @@ function _financialacls_civicrm_get_accounts_clause(): string {
         $clause = 'IN (' . implode(',', array_keys($accounts)) . ')';
       }
     }
-    catch (\API_Exception $e) {
+    catch (\CRM_Core_Exception $e) {
       // We've already set it to 0 so we can quietly handle this.
     }
   }
@@ -192,12 +196,40 @@ function _financialacls_civicrm_get_accounts_clause(): string {
  * @return string
  */
 function _financialacls_civicrm_get_type_clause(): string {
+  return 'IN (' . implode(',', _financialacls_civicrm_get_accessible_financial_types()) . ')';
+}
+
+/**
+ * Get an array of the ids of accessible financial types.
+ *
+ * If none then it will be [0]
+ *
+ * @return int[]
+ */
+function _financialacls_civicrm_get_accessible_financial_types(): array {
   $types = [];
   CRM_Financial_BAO_FinancialType::getAvailableFinancialTypes($types);
-  if ($types) {
-    return 'IN (' . implode(',', array_keys($types)) . ')';
+  if (empty($types)) {
+    $types = [0];
   }
-  return '= 0';
+  return array_keys($types);
+}
+
+/**
+ * Get the clause to limit available membership types.
+ *
+ * @return string
+ *
+ * @throws \CRM_Core_Exception
+ */
+function _financialacls_civicrm_get_membership_type_clause(): string {
+  $financialTypes = _financialacls_civicrm_get_accessible_financial_types();
+  if ($financialTypes === [0] || !CRM_Core_Component::isEnabled('CiviMember')) {
+    return '= 0';
+  }
+  $membershipTypes = (array) MembershipType::get(FALSE)
+    ->addWhere('financial_type_id', 'IN', $financialTypes)->execute()->indexBy('id');
+  return empty($membershipTypes) ? '= 0' : ('IN (' . implode(',', array_keys($membershipTypes)) . ')');
 }
 
 /**
@@ -404,6 +436,9 @@ function financialacls_toggle() {
  * @param array $menu
  */
 function financialacls_civicrm_alterMenu(array &$menu): void {
+  if (!financialacls_is_acl_limiting_enabled()) {
+    return;
+  }
   $menu['civicrm/admin/financial/financialType']['access_arguments'] = [['administer CiviCRM Financial Types']];
 }
 

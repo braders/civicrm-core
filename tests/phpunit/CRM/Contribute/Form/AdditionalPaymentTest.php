@@ -72,7 +72,7 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
   /**
    * Setup function.
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public function setUp(): void {
     parent::setUp();
@@ -119,7 +119,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the partially paid Contribution using Credit Card.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testAddPaymentUsingCreditCardForPartiallyPaidContribution(): void {
     $mut = new CiviMailUtils($this, TRUE);
@@ -135,23 +134,18 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
       'Payment Details',
       'Total Fee: $100.00',
       'This Payment Amount: $70.00',
-      'Balance Owed: $0.00 ',
       'Billing Name and Address',
       'Vancouver, AE 1321312',
       'Visa',
       '***********1111',
       'Expires: May 2025',
     ]);
-
-    $mut->stop();
-    $mut->clearMessages();
   }
 
   /**
    * Test the submit function that completes the partially paid Contribution.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testAddPaymentForPartiallyPaidContribution(): void {
     $this->createPartiallyPaidOrder();
@@ -165,7 +159,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the partially paid Contribution with multiple payments.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMultiplePaymentForPartiallyPaidContribution(): void {
     $this->createPartiallyPaidOrder();
@@ -197,7 +190,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the partially paid Contribution with multiple payments.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMultiplePaymentForPartiallyPaidContributionWithOneCreditCardPayment(): void {
     $mut = new CiviMailUtils($this, TRUE);
@@ -241,7 +233,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the pending pay later Contribution using Credit Card.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testAddPaymentUsingCreditCardForPendingPayLaterContribution(): void {
     $mut = new CiviMailUtils($this, TRUE);
@@ -255,7 +246,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
       'Below you will find a receipt for this payment.',
       'Total Fee: $100.00',
       'This Payment Amount: $100.00',
-      'Balance Owed: $0.00 ',
       'Paid By: Credit Card',
       '***********1111',
       'Billing Name and Address',
@@ -271,7 +261,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the pending pay later Contribution.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testAddPaymentForPendingPayLaterContribution(): void {
     $this->createPendingOrder();
@@ -293,7 +282,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the Membership status after completing the pending pay later Contribution.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMembershipStatusAfterCompletingPayLaterContribution(): void {
     $this->createContributionAndMembershipOrder();
@@ -306,7 +294,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the pending pay later Contribution with multiple payments.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMultiplePaymentForPendingPayLaterContribution(): void {
     $this->createPendingOrder();
@@ -332,7 +319,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the submit function that completes the pending pay later Contribution with multiple payments.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMultiplePaymentForPendingPayLaterContributionWithOneCreditCardPayment(): void {
     $this->createPendingOrder();
@@ -363,7 +349,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    *  Mode of Payment
    * @param bool $isEmailReceipt
    *
-   * @throws \CiviCRM_API3_Exception
    * @throws \CRM_Core_Exception
    */
   public function submitPayment(float $amount, string $mode = NULL, bool $isEmailReceipt = FALSE): void {
@@ -399,7 +384,7 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
       ];
     }
     $_REQUEST['id'] = $this->ids['Contribution'][0] ?? $this->_contributionId;
-    /* @var CRM_Contribute_Form_AdditionalPayment $form*/
+    /** @var CRM_Contribute_Form_AdditionalPayment $form*/
     $form = $this->getFormObject('CRM_Contribute_Form_AdditionalPayment', $submitParams);
     $form->buildForm();
     $form->postProcess();
@@ -463,7 +448,6 @@ class CRM_Contribute_Form_AdditionalPaymentTest extends CiviUnitTestCase {
    * Test the Membership status renaming after completing the pending pay later Contribution.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testMembershipStatusAfterCompletingPayLaterContributionWithRenamedMembershipStatus(): void {
     $this->renameNewMembershipStatus('Fresh');

@@ -15,7 +15,11 @@ namespace Civi\Api4\Service\Spec\Provider;
 use Civi\Api4\Service\Spec\FieldSpec;
 use Civi\Api4\Service\Spec\RequestSpec;
 
-class EventCreationSpecProvider implements Generic\SpecProviderInterface {
+/**
+ * @service
+ * @internal
+ */
+class EventCreationSpecProvider extends \Civi\Core\Service\AutoService implements Generic\SpecProviderInterface {
 
   /**
    * @inheritDoc
@@ -31,8 +35,6 @@ class EventCreationSpecProvider implements Generic\SpecProviderInterface {
       ->setTitle('Template Id')
       ->setDescription('Template on which to base this new event');
     $spec->addFieldSpec($template_id);
-
-    $spec->getFieldByName('event_tz')->setDefaultValue(\CRM_Core_Config::singleton()->userSystem->getTimeZoneString());
   }
 
   /**

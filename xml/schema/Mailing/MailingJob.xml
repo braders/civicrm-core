@@ -7,12 +7,15 @@
   <comment>Stores information about the job that executes this mailing</comment>
   <archive>true</archive>
   <component>CiviMail</component>
+  <title>Outbound Mailing</title>
+  <description>Attempted delivery of a mailing.</description>
   <field>
     <name>id</name>
     <title>Mailing Job ID</title>
     <type>int unsigned</type>
     <required>true</required>
     <html>
+      <label>ID</label>
       <type>Number</type>
     </html>
   </field>
@@ -93,6 +96,7 @@
     <title>Mailing Job Is Test?</title>
     <type>boolean</type>
     <default>0</default>
+    <required>true</required>
     <comment>Is this job for a test mail?</comment>
     <add>1.9</add>
   </field>

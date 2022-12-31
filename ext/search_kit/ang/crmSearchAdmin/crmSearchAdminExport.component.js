@@ -11,7 +11,7 @@
     controller: function ($scope, $element, crmApi4) {
       var ts = $scope.ts = CRM.ts('org.civicrm.search_kit'),
         ctrl = this;
-      this.afformEnabled = CRM.crmSearchAdmin.afformEnabled;
+      this.afformEnabled = 'org.civicrm.afform' in CRM.crmSearchAdmin.modules;
 
       this.types = [
         {entity: 'SavedSearch', title: ts('Saved Search')},
@@ -20,7 +20,7 @@
       ];
 
       this.$onInit = function() {
-        this.apiExplorerLink = CRM.url('civicrm/api4#/explorer/SavedSearch/export?_format=php&id=' + ctrl.savedSearchId);
+        this.apiExplorerLink = CRM.url('civicrm/api4#/explorer/SavedSearch/export?_format=php&cleanup=always&id=' + ctrl.savedSearchId);
 
         var findDisplays = _.transform(ctrl.displayNames, function(findDisplays, displayName) {
           findDisplays.push(['search_displays', 'CONTAINS', ctrl.savedSearchName + '.' + displayName]);
@@ -49,9 +49,13 @@
         var data = [];
         _.each(ctrl.types, function(type) {
           if (type.enabled) {
-            _.each(type.values, function(values) {
-              data.push([type.entity, 'create', {values: values}]);
-            });
+            var params = {records: type.values};
+            // Afform always matches on 'name', no need to add it to the API 'save' params
+            if (type.entity !== 'Afform') {
+              // Group and SavedSearch match by 'name', SearchDisplay also matches by 'saved_search_id'.
+              params.match = type.entity === 'SearchDisplay' ? ['name', 'saved_search_id'] : ['name'];
+            }
+            data.push([type.entity, 'save', params]);
           }
         });
         ctrl.output = JSON.stringify(data, null, 2);

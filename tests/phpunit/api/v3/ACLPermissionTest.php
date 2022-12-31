@@ -187,7 +187,7 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    *
    * @param int $version
    *
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testRelatedEntityPermissions(int $version): void {
@@ -210,6 +210,10 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
         'location_type_id' => 1,
       ],
     ];
+    // v3 GroupContact API is nonstandard
+    if ($version === 4) {
+      $testEntities['GroupContact'] = ['group_id' => $this->groupCreate()];
+    }
     foreach ($testEntities as $entity => $params) {
       $params += [
         'contact_id' => $disallowedContact,
@@ -621,7 +625,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityViewAllActivitiesDoesntCutItAnymore(int $version): void {
@@ -653,7 +656,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityViewAllContactsEnoughWIthID(int $version): void {
@@ -672,7 +674,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityAccessCiviCRMEnough(int $version): void {
@@ -702,7 +703,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityCheckPermissionsByComponent(int $version): void {
@@ -730,7 +730,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityCheckPermissionsByCaseComponent(int $version): void {
@@ -766,7 +765,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityByACL(int $version): void {
@@ -792,7 +790,7 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * To leverage ACL permission to view an activity you must be able to see any
    * of the contacts. FIXME: Api4
    *
-   * @throws \CRM_Core_Exception|\CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public function testGetActivityByAclCannotViewAllContacts(): void {
     $activity = $this->activityCreate(['assignee_contact_id' => $this->individualCreate()]);
@@ -838,7 +836,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testGetActivityByAclCannotViewAnyContacts(int $version): void {
@@ -863,7 +860,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @dataProvider versionThreeAndFour
-   * @throws \CiviCRM_API3_Exception
    * @throws \CRM_Core_Exception
    */
   public function testGetActivityACLSourceContactDeleted($version): void {
@@ -891,7 +887,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testActivitiesGetMultipleIdsCheckPermissions(int $version): void {
@@ -921,7 +916,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testActivitiesGetMultipleIdsCheckPermissionsLimitedACL(int $version): void {
@@ -961,7 +955,6 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
    * @param int $version
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    * @dataProvider versionThreeAndFour
    */
   public function testActivitiesGetMultipleIdsCheckPermissionsNotIN(int $version): void {
@@ -1100,7 +1093,7 @@ class api_v3_ACLPermissionTest extends CiviUnitTestCase {
   }
 
   /**
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public function testApi4CustomEntityACL(): void {
     $group = 'test_group';

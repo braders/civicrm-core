@@ -22,12 +22,9 @@
 
     <tr>
       <td>
-        {assign var="greeting" value="{contact.email_greeting}"}{if $greeting}<p>{$greeting},</p>{/if}
-        {if !empty($formValues.receipt_text_signup)}
-          <p>{$formValues.receipt_text_signup|htmlize}</p>
-        {elseif !empty($formValues.receipt_text_renewal)}
-          <p>{$formValues.receipt_text_renewal|htmlize}</p>
-        {else}
+        {assign var="greeting" value="{contact.email_greeting_display}"}{if $greeting}<p>{$greeting},</p>{/if}
+        {if $receipt_text}
+          <p>{$receipt_text|htmlize}</p>
           <p>{ts}Thank you for this contribution.{/ts}</p>
         {/if}
       </td>
@@ -90,7 +87,7 @@
                 {foreach from=$lineItem item=value key=priceset}
                   <tr>
                     <td colspan="2" {$valueStyle}>
-                      <table> {* FIXME: style this table so that it looks like the text version (justification, etc.) *}
+                      <table>
                         <tr>
                           <th>{ts}Item{/ts}</th>
                           <th>{ts}Fee{/ts}</th>
@@ -144,7 +141,7 @@
                   </tr>
                 {/foreach}
                 {if !empty($dataArray)}
-                  {if isset($formValues.total_amount) and isset($totalTaxAmount)}
+                  {if $formValues.total_amount and $totalTaxAmount}
                   <tr>
                     <td {$labelStyle}>
                       {ts}Amount Before Tax:{/ts}
@@ -167,7 +164,7 @@
                   {/foreach}
                 {/if}
               {/if}
-              {if isset($totalTaxAmount)}
+              {if $totalTaxAmount}
                 <tr>
                   <td {$labelStyle}>
                     {ts}Total Tax Amount{/ts}

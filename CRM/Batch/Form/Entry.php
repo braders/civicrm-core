@@ -212,6 +212,12 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
       ->addSetting(['setting' => ['monetaryDecimalPoint' => CRM_Core_Config::singleton()->monetaryDecimalPoint]]);
 
     $this->assign('defaultCurrencySymbol', CRM_Core_BAO_Country::defaultCurrencySymbol());
+    // This could be updated to TRUE in the formRule
+    $this->addExpectedSmartyVariable('batchAmountMismatch');
+    // It is unclear where this is otherwise assigned but the template expects it.
+    $this->addExpectedSmartyVariable('contactFields');
+    // The not-always-present refresh button.
+    $this->addOptionalQuickFormElement('_qf_Batch_refresh');
   }
 
   /**
@@ -425,7 +431,7 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
 
     $batchTotal = 0;
     foreach ($params['field'] as $key => $value) {
-      $batchTotal += $value['total_amount'];
+      $batchTotal += ($value['total_amount'] ?: 0);
 
       //validate for soft credit fields
       if (!empty($params['soft_credit_contact_id'][$key]) && empty($params['soft_credit_amount'][$key])) {
@@ -462,8 +468,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
     if (!empty($errors)) {
       return $errors;
     }
-
-    $self->assign('batchAmountMismatch', FALSE);
     return TRUE;
   }
 
@@ -517,7 +521,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    * Process the form after the input has been submitted and validated.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function postProcess() {
     $params = $this->controller->exportValues($this->_name);
@@ -557,7 +560,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    * @return bool
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   private function processContribution(&$params) {
 
@@ -762,8 +764,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    *   batch total monetary amount.
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
-   * @throws \API_Exception
    */
   private function processMembership(array $params) {
     $batchTotal = 0;
@@ -921,7 +921,7 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    *
    * @return bool
    *   true if mail was sent successfully
-   * @throws \CRM_Core_Exception|\API_Exception
+   * @throws \CRM_Core_Exception
    *
    */
   protected function emailReceipt($form, &$formValues): bool {
@@ -936,9 +936,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
 
     $form->assign('module', 'Membership');
     $form->assign('contactID', $formValues['contact_id']);
-
-    $form->assign('membershipID', CRM_Utils_Array::value('membership_id', $form->_params, CRM_Utils_Array::value('membership_id', $form->_defaultValues)));
-    $this->assign('contributionID', $this->getCurrentRowContributionID());
 
     if (!empty($formValues['contribution_status_id'])) {
       $form->assign('contributionStatusID', $formValues['contribution_status_id']);
@@ -961,16 +958,18 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
 
     CRM_Core_BAO_MessageTemplate::sendTemplate(
       [
-        'groupName' => 'msg_tpl_workflow_membership',
-        'valueName' => 'membership_offline_receipt',
-        'contactId' => $form->_receiptContactId,
+        'workflow' => 'membership_offline_receipt',
         'from' => $this->getFromEmailAddress(),
         'toName' => $form->_contributorDisplayName,
         'toEmail' => $form->_contributorEmail,
         'PDFFilename' => ts('receipt') . '.pdf',
         'isEmailPdf' => Civi::settings()->get('invoice_is_email_pdf'),
-        'contributionId' => $this->getCurrentRowContributionID(),
         'isTest' => (bool) ($form->_action & CRM_Core_Action::PREVIEW),
+        'modelProps' => [
+          'contributionId' => $this->getCurrentRowContributionID(),
+          'contactId' => $form->_receiptContactId,
+          'membershipId' => $this->getCurrentRowMembershipID(),
+        ],
       ]
     );
 
@@ -1024,7 +1023,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    * @return bool
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   public function testProcessContribution($params) {
     return $this->processContribution($params);
@@ -1037,7 +1035,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    * @return CRM_Member_BAO_Membership
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   protected function legacyProcessMembership($customFieldsFormatted, $formDates = []): CRM_Member_DAO_Membership {
     $updateStatusId = FALSE;
@@ -1176,7 +1173,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    * @return bool
    *
    * @throws \CRM_Core_Exception
-   * @throws \CiviCRM_API3_Exception
    */
   private function currentRowIsRenew(): bool {
     return $this->currentRowIsRenewOption === 2 && $this->getCurrentMembership();
@@ -1187,7 +1183,6 @@ class CRM_Batch_Form_Entry extends CRM_Core_Form {
    *
    * @return array|bool
    *
-   * @throws \CiviCRM_API3_Exception
    * @throws \CRM_Core_Exception
    */
   protected function getCurrentMembership() {

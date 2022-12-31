@@ -251,9 +251,7 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
       return $messages;
     }
 
-    $config = CRM_Core_Config::singleton();
-
-    if (in_array('CiviMail', $config->enableComponents) &&
+    if (CRM_Core_Component::isEnabled('CiviMail') &&
       CRM_Core_BAO_MailSettings::defaultDomain() == "EXAMPLE.ORG"
     ) {
       $message = new CRM_Utils_Check_Message(
@@ -589,7 +587,7 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
     try {
       $remotes = $extensionSystem->getBrowser()->getExtensions();
     }
-    catch (CRM_Extension_Exception $e) {
+    catch (CRM_Extension_Exception | \GuzzleHttp\Exception\GuzzleException $e) {
       $messages[] = new CRM_Utils_Check_Message(
         __FUNCTION__,
         $e->getMessage(),
@@ -605,6 +603,7 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
     $enabled = array_keys(array_filter($stauses, function($status) {
       return $status === CRM_Extension_Manager::STATUS_INSTALLED;
     }));
+    $requiredExtensions = $mapper->getKeysByTag('mgmt:required');
     sort($keys);
     $updates = $errors = $okextensions = [];
 
@@ -662,6 +661,24 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
             }
           }
           break;
+
+        default:
+          if (in_array($key, $requiredExtensions, TRUE)) {
+            $requiredMessage = new CRM_Utils_Check_Message(
+              __FUNCTION__ . 'Required:' . $key,
+              ts('The extension %1 is required and must be enabled.', [1 => $row['label']]),
+              ts('Required Extension'),
+              \Psr\Log\LogLevel::ERROR,
+              'fa-exclamation-triangle'
+            );
+            $requiredMessage->addAction(
+              ts('Enable %1', [1 => $row['label']]),
+              '',
+              'api3',
+              ['Extension', 'install', ['key' => $key]]
+            );
+            $messages[] = $requiredMessage;
+          }
       }
     }
 
@@ -1011,7 +1028,7 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
     $messages = [];
     $version = CRM_Utils_SQL::getDatabaseVersion();
     $minRecommendedVersion = CRM_Upgrade_Incremental_General::MIN_RECOMMENDED_MYSQL_VER;
-    $mariaDbRecommendedVersion = '10.1';
+    $mariaDbRecommendedVersion = CRM_Upgrade_Incremental_General::MIN_RECOMMENDED_MARIADB_VER;
     $upcomingCiviChangeVersion = '5.34';
     if (version_compare(CRM_Utils_SQL::getDatabaseVersion(), $minRecommendedVersion, '<')) {
       $messages[] = new CRM_Utils_Check_Message(
@@ -1041,28 +1058,6 @@ class CRM_Utils_Check_Component_Env extends CRM_Utils_Check_Component {
         'fa-server'
       );
     }
-    return $messages;
-  }
-
-  /**
-   * Ensure that the CMS is providing a supported timezone.
-   *
-   * @return CRM_Utils_Check_Message[]
-   */
-  public function checkUFTimezoneValid() {
-    $messages = [];
-    $check_tz = CRM_Core_Config::singleton()->userSystem->getTimeZoneString();
-
-    if (!array_key_exists($check_tz, CRM_Core_SelectValues::timezone())) {
-      $messages[] = new CRM_Utils_Check_Message(
-        __FUNCTION__,
-        ts('This system has an invalid timezone set. Please verify that your CMS has a timezone configured that is listed under the <a href="%1">PHP List of Supported Timezones</a>.', [1 => 'https://www.php.net/manual/en/timezones.php']),
-        ts('Missing or Invalid Timezone'),
-        \Psr\Log\LogLevel::ERROR,
-        'fa-clock-o'
-      );
-    }
-
     return $messages;
   }
 

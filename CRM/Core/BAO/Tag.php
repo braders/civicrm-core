@@ -22,24 +22,20 @@ class CRM_Core_BAO_Tag extends CRM_Core_DAO_Tag {
   protected $tree;
 
   /**
-   * Fetch object based on array of properties.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return object
-   *   CRM_Core_DAO_Tag object on success, otherwise null
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
-  public static function retrieve(&$params, &$defaults) {
-    $tag = new CRM_Core_DAO_Tag();
-    $tag->copyValues($params);
-    if ($tag->find(TRUE)) {
-      CRM_Core_DAO::storeValues($tag, $defaults);
-      return $tag;
-    }
-    return NULL;
+  public static function retrieve($params, &$defaults) {
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -93,6 +89,7 @@ class CRM_Core_BAO_Tag extends CRM_Core_DAO_Tag {
       $thisref['name'] = $dao->name;
       $thisref['description'] = $dao->description;
       $thisref['is_selectable'] = $dao->is_selectable;
+      $thisref['children'] = [];
 
       if (!$dao->parent_id) {
         $this->tree[$dao->id] = &$thisref;
@@ -305,7 +302,7 @@ class CRM_Core_BAO_Tag extends CRM_Core_DAO_Tag {
    * @param bool $allowSelectingNonSelectable
    * @param null $exclude
    * @return array
-   * @throws \CiviCRM_API3_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function getColorTags($usedFor = NULL, $allowSelectingNonSelectable = FALSE, $exclude = NULL) {
     $params = [

@@ -34,7 +34,7 @@ class CRM_Core_BAO_UFField extends CRM_Core_DAO_UFField {
    *   Array per getfields metadata.
    *
    * @return \CRM_Core_BAO_UFField
-   * @throws \API_Exception
+   * @throws \CRM_Core_Exception
    */
   public static function create($params) {
     $id = $params['id'] ?? NULL;
@@ -52,13 +52,13 @@ class CRM_Core_BAO_UFField extends CRM_Core_DAO_UFField {
         $params += $defaults;
       }
       else {
-        throw new API_Exception("UFFIeld id {$params['id']} not found.");
+        throw new CRM_Core_Exception("UFFIeld id {$params['id']} not found.");
       }
     }
 
     // Validate field_name
     if (strpos($params['field_name'], 'formatting') !== 0 && !CRM_Core_BAO_UFField::isValidFieldName($params['field_name'])) {
-      throw new API_Exception('The field_name is not valid');
+      throw new CRM_Core_Exception('The field_name is not valid');
     }
 
     // Supply default label if not set
@@ -80,7 +80,7 @@ class CRM_Core_BAO_UFField extends CRM_Core_DAO_UFField {
     }
 
     if (self::duplicateField($params)) {
-      throw new API_Exception("The field was not added. It already exists in this profile.");
+      throw new CRM_Core_Exception("The field was not added. It already exists in this profile.");
     }
 
     //@todo why is this even optional? Surely weight should just be 'managed' ??
@@ -114,17 +114,20 @@ class CRM_Core_BAO_UFField extends CRM_Core_DAO_UFField {
   }
 
   /**
-   * Fetch object based on array of properties.
+   * Retrieve DB object and copy to defaults array.
    *
    * @param array $params
-   *   (reference ) an assoc array of name/value pairs.
+   *   Array of criteria values.
    * @param array $defaults
-   *   (reference ) an assoc array to hold the flattened values.
+   *   Array to be populated with found values.
    *
-   * @return CRM_Core_BAO_UFField
+   * @return self|null
+   *   The DAO object, if found.
+   *
+   * @deprecated
    */
-  public static function retrieve(&$params, &$defaults) {
-    return CRM_Core_DAO::commonRetrieve('CRM_Core_DAO_UFField', $params, $defaults);
+  public static function retrieve($params, &$defaults) {
+    return self::commonRetrieve(self::class, $params, $defaults);
   }
 
   /**
@@ -706,7 +709,7 @@ SELECT  id
    *
    * @param int $profileID
    */
-  public function resetInSelectorANDSearchable($profileID) {
+  public static function resetInSelectorANDSearchable($profileID) {
     if (!$profileID) {
       return;
     }
@@ -744,7 +747,7 @@ SELECT  id
    */
   public static function assignAddressField($key, &$profileAddressFields, $profileFilter, $paymentProcessorBillingFields = NULL) {
     $billing_id = CRM_Core_BAO_LocationType::getBilling();
-    list($prefixName, $index) = CRM_Utils_System::explode('-', $key, 2);
+    [$prefixName, $index] = CRM_Utils_System::explode('-', $key, 2);
 
     $profileFields = civicrm_api3('uf_field', 'get', array_merge($profileFilter,
       [
@@ -1035,6 +1038,33 @@ SELECT  id
     $fields = self::getAvailableFieldsFlat();
     $fields['formatting'] = ['title' => ts('Formatting')];
     return CRM_Utils_Array::collect('title', $fields);
+  }
+
+  /**
+   * Get pseudoconstant list for `field_name`
+   *
+   * Includes APIv4-style names for custom fields for portability.
+   *
+   * @return array
+   */
+  public static function getAvailableFieldOptions() {
+    $fields = self::getAvailableFieldsFlat();
+    $fields['formatting'] = ['title' => ts('Formatting')];
+    $options = [];
+    foreach ($fields as $fieldName => $field) {
+      $option = [
+        'id' => $fieldName,
+        'name' => $fieldName,
+        'label' => $field['title'],
+      ];
+      if (!empty($field['custom_group_id']) && !empty($field['id'])) {
+        $groupName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomGroup', $field['custom_group_id']);
+        $fieldName = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_CustomField', $field['id']);
+        $option['name'] = "$groupName.$fieldName";
+      }
+      $options[] = $option;
+    }
+    return $options;
   }
 
   /**

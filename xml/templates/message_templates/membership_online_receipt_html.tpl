@@ -20,13 +20,13 @@
 
   <tr>
    <td>
-     {assign var="greeting" value="{contact.email_greeting}"}{if $greeting}<p>{$greeting},</p>{/if}
+     {assign var="greeting" value="{contact.email_greeting_display}"}{if $greeting}<p>{$greeting},</p>{/if}
     {if !empty($receipt_text)}
      <p>{$receipt_text|htmlize}</p>
     {/if}
 
     {if $is_pay_later}
-     <p>{if isset($pay_later_receipt)}{$pay_later_receipt}{/if}</p> {* FIXME: this might be text rather than HTML *}
+     <p>{$pay_later_receipt}</p> {* FIXME: this might be text rather than HTML *}
     {/if}
 
    </td>
@@ -112,7 +112,7 @@
        {foreach from=$lineItem item=value key=priceset}
         <tr>
          <td colspan="2" {$valueStyle}>
-          <table> {* FIXME: style this table so that it looks like the text version (justification, etc.) *}
+          <table>
            <tr>
             <th>{ts}Item{/ts}</th>
             <th>{ts}Qty{/ts}</th>
@@ -153,7 +153,7 @@
        {foreach from=$lineItem item=value key=priceset}
         <tr>
          <td colspan="2" {$valueStyle}>
-          <table> {* FIXME: style this table so that it looks like the text version (justification, etc.) *}
+          <table>
            <tr>
             <th>{ts}Item{/ts}</th>
             <th>{ts}Fee{/ts}</th>
@@ -227,7 +227,7 @@
         {/foreach}
        {/if}
        {/if}
-       {if isset($totalTaxAmount)}
+       {if $totalTaxAmount}
         <tr>
          <td {$labelStyle}>
           {ts}Total Tax Amount{/ts}
