@@ -32,6 +32,8 @@ use Civi\Api4\Utils\CoreUtil;
  */
 class BasicGetFieldsAction extends BasicGetAction {
 
+  use Traits\GetSetValueTrait;
+
   /**
    * Fetch option lists for fields?
    *
@@ -107,6 +109,8 @@ class BasicGetFieldsAction extends BasicGetAction {
    *
    * Format option lists.
    *
+   * Configure read-only input fields based on the action.
+   *
    * In most cases it's not necessary to override this function, even if your entity is really weird.
    * Instead just override $this->fields and this function will respect that.
    *
@@ -134,15 +138,24 @@ class BasicGetFieldsAction extends BasicGetAction {
       ], $fieldDefaults);
       $field += $defaults + $fieldDefaults;
       if (array_key_exists('label', $fieldDefaults)) {
-        $field['label'] = $field['label'] ?? $field['title'] ?? $field['name'];
+        $field['label'] ??= $field['title'] ?? $field['name'];
       }
-      if (!empty($field['options']) && is_array($field['options']) && empty($field['suffixes']) && array_key_exists('suffixes', $field)) {
+      if (isset($field['options']) && is_array($field['options']) && empty($field['suffixes']) && array_key_exists('suffixes', $field)) {
         $this->setFieldSuffixes($field);
       }
       if (isset($defaults['options'])) {
         $this->formatOptionList($field);
       }
+      if ($this->getAction() === 'create' && $field['readonly'] === TRUE) {
+        $field['input_type'] = 'DisplayOnly';
+      }
       $field = array_diff_key($field, $internalProps);
+    }
+    // Hide the 'contact_type' field from Individual,Organization,Household pseudo-entities
+    if (!$isInternal && $this->getEntityName() !== 'Contact' && CoreUtil::isContact($this->getEntityName())) {
+      $values = array_filter($values, function($field) {
+        return $field['name'] !== 'contact_type';
+      });
     }
   }
 
@@ -154,13 +167,14 @@ class BasicGetFieldsAction extends BasicGetAction {
    * @param array $field
    */
   private function formatOptionList(&$field) {
-    if (empty($field['options'])) {
+    $optionsExist = isset($field['options']) && is_array($field['options']);
+    if (!isset($field['options'])) {
       $field['options'] = !empty($field['pseudoconstant']);
     }
     if (!empty($field['pseudoconstant']['optionGroupName'])) {
       $field['suffixes'] = CoreUtil::getOptionValueFields($field['pseudoconstant']['optionGroupName']);
     }
-    if (!$this->loadOptions || !$field['options']) {
+    if (!$this->loadOptions || (!$optionsExist && empty($field['pseudoconstant']))) {
       $field['options'] = (bool) $field['options'];
       return;
     }
@@ -169,43 +183,13 @@ class BasicGetFieldsAction extends BasicGetAction {
         $field['options'] = self::pseudoconstantOptions($field['pseudoconstant']['optionGroupName']);
       }
       elseif (!empty($field['pseudoconstant']['callback'])) {
-        $field['options'] = call_user_func(\Civi\Core\Resolver::singleton()->get($field['pseudoconstant']['callback']));
+        $field['options'] = call_user_func(\Civi\Core\Resolver::singleton()->get($field['pseudoconstant']['callback']), $field['name'], ['values' => $this->getValues()]);
       }
       else {
         throw new \CRM_Core_Exception('Unsupported pseudoconstant type for field "' . $field['name'] . '"');
       }
     }
-    if (!$field['options'] || !is_array($field['options'])) {
-      return;
-    }
-
-    $formatted = [];
-    $first = reset($field['options']);
-    // Flat array requested
-    if ($this->loadOptions === TRUE) {
-      // Convert non-associative to flat array
-      if (is_array($first) && isset($first['id'])) {
-        foreach ($field['options'] as $option) {
-          $formatted[$option['id']] = $option['label'] ?? $option['name'] ?? $option['id'];
-        }
-        $field['options'] = $formatted;
-      }
-    }
-    // Non-associative array of multiple properties requested
-    else {
-      foreach ($field['options'] as $id => $option) {
-        // Transform a flat list
-        if (!is_array($option)) {
-          $option = [
-            'id' => $id,
-            'name' => $id,
-            'label' => $option,
-          ];
-        }
-        $formatted[] = array_intersect_key($option, array_flip($this->loadOptions));
-      }
-      $field['options'] = $formatted;
-    }
+    $field['options'] = CoreUtil::formatOptionList($field['options'], $this->loadOptions);
   }
 
   /**
@@ -234,17 +218,6 @@ class BasicGetFieldsAction extends BasicGetAction {
       'replace' => 'create',
     ];
     return $sub[$this->action] ?? $this->action;
-  }
-
-  /**
-   * Add an item to the values array
-   * @param string $fieldName
-   * @param mixed $value
-   * @return $this
-   */
-  public function addValue(string $fieldName, $value) {
-    $this->values[$fieldName] = $value;
-    return $this;
   }
 
   /**
@@ -348,6 +321,7 @@ class BasicGetFieldsAction extends BasicGetAction {
           'Date' => ts('Date'),
           'Float' => ts('Float'),
           'Integer' => ts('Integer'),
+          'Money' => ts('Money'),
           'String' => ts('String'),
           'Text' => ts('Text'),
           'Timestamp' => ts('Timestamp'),
@@ -360,13 +334,19 @@ class BasicGetFieldsAction extends BasicGetAction {
           'ChainSelect' => ts('Chain-Select'),
           'CheckBox' => ts('Checkboxes'),
           'Date' => ts('Date Picker'),
+          'DisplayOnly' => ts('Display Only'),
+          'Email' => ts('Email'),
           'EntityRef' => ts('Autocomplete Entity'),
           'File' => ts('File'),
+          'Hidden' => ts('Hidden'),
+          'Location' => ts('Address Location'),
           'Number' => ts('Number'),
           'Radio' => ts('Radio Buttons'),
+          'RichTextEditor' => ts('Rich Text Editor'),
           'Select' => ts('Select'),
-          'Text' => ts('Text'),
-          'Location' => ts('Address Location'),
+          'Text' => ts('Single-Line Text'),
+          'TextArea' => ts('Multi-Line Text'),
+          'Url' => ts('URL'),
         ],
       ],
       [
@@ -386,6 +366,11 @@ class BasicGetFieldsAction extends BasicGetAction {
         'data_type' => 'String',
       ],
       [
+        'name' => 'localizable',
+        'data_type' => 'Boolean',
+        'default_value' => FALSE,
+      ],
+      [
         'name' => 'readonly',
         'data_type' => 'Boolean',
         'description' => 'True for auto-increment, calculated, or otherwise non-editable fields.',
@@ -395,6 +380,16 @@ class BasicGetFieldsAction extends BasicGetAction {
         'name' => 'deprecated',
         'data_type' => 'Boolean',
         'default_value' => FALSE,
+      ],
+      [
+        'name' => 'permission',
+        'data_type' => 'Array',
+      ],
+      [
+        'name' => 'usage',
+        'data_type' => 'Array',
+        'description' => 'Contexts in which field is used.',
+        'default_value' => [],
       ],
       [
         'name' => 'output_formatters',

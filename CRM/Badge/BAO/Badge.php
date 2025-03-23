@@ -25,6 +25,11 @@ use Civi\Token\TokenProcessor;
 class CRM_Badge_BAO_Badge {
 
   /**
+   * @var CRM_Utils_PDF_Label
+   */
+  public $pdf;
+
+  /**
    * @var bool
    */
   public $debug = FALSE;
@@ -168,9 +173,6 @@ class CRM_Badge_BAO_Badge {
    * @param int $cellspacing
    */
   public function labelCreator($formattedRow, $cellspacing = 0) {
-    $this->lMarginLogo = 18;
-    $this->tMarginName = 20;
-
     $x = $this->pdf->GetAbsX();
     $y = $this->pdf->getY();
 
@@ -179,17 +181,17 @@ class CRM_Badge_BAO_Badge {
 
     $startOffset = 0;
     if (!empty($formattedRow['image_1'])) {
-      $this->printImage($formattedRow['image_1'], NULL, NULL, CRM_Utils_Array::value('width_image_1', $formattedRow),
-        CRM_Utils_Array::value('height_image_1', $formattedRow));
+      $this->printImage($formattedRow['image_1'], NULL, NULL, $formattedRow['width_image_1'] ?? NULL,
+        $formattedRow['height_image_1'] ?? NULL);
     }
 
     if (!empty($formattedRow['image_2'])) {
-      $this->printImage($formattedRow['image_2'], $x + 68, NULL, CRM_Utils_Array::value('width_image_2', $formattedRow),
-        CRM_Utils_Array::value('height_image_2', $formattedRow));
+      $this->printImage($formattedRow['image_2'], $x + 68, NULL, $formattedRow['width_image_2'] ?? NULL,
+        $formattedRow['height_image_2'] ?? NULL);
     }
 
-    if ((CRM_Utils_Array::value('height_image_1', $formattedRow) >
-        CRM_Utils_Array::value('height_image_2', $formattedRow)) && !empty($formattedRow['height_image_1'])
+    if ((($formattedRow['height_image_1'] ?? 0) >
+        ($formattedRow['height_image_2'] ?? 0)) && !empty($formattedRow['height_image_1'])
     ) {
       $startOffset = $formattedRow['height_image_1'] ?? NULL;
     }
@@ -199,7 +201,7 @@ class CRM_Badge_BAO_Badge {
 
     if (!empty($formattedRow['participant_image'])) {
       $imageAlign = 0;
-      switch (CRM_Utils_Array::value('alignment_participant_image', $formattedRow)) {
+      switch ($formattedRow['alignment_participant_image'] ?? NULL) {
         case 'R':
           $imageAlign = 68;
           break;
@@ -211,7 +213,7 @@ class CRM_Badge_BAO_Badge {
         default:
           break;
       }
-      $this->pdf->Image($formattedRow['participant_image'], $x + $imageAlign, $y + $startOffset, CRM_Utils_Array::value('width_participant_image', $formattedRow), CRM_Utils_Array::value('height_participant_image', $formattedRow));
+      $this->pdf->Image($formattedRow['participant_image'], $x + $imageAlign, $y + $startOffset, $formattedRow['width_participant_image'] ?? NULL, $formattedRow['height_participant_image'] ?? NULL);
       if ($startOffset == NULL && !empty($formattedRow['height_participant_image'])) {
         $startOffset = $formattedRow['height_participant_image'];
       }
@@ -363,10 +365,8 @@ class CRM_Badge_BAO_Badge {
       $y = $this->pdf->GetY();
     }
 
-    $this->imgRes = 300;
-
     if ($img) {
-      [$w, $h] = self::getImageProperties($img, $this->imgRes, $w, $h);
+      [$w, $h] = self::getImageProperties($img, 300, $w, $h);
       $this->pdf->Image($img, $x, $y, $w, $h, '', '', '', FALSE, 72, '', FALSE,
         FALSE, $this->debug, FALSE, FALSE, FALSE);
     }

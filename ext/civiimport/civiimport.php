@@ -32,48 +32,12 @@ function civiimport_civicrm_install() {
 }
 
 /**
- * Implements hook_civicrm_postInstall().
- *
- * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_postInstall
- */
-function civiimport_civicrm_postInstall() {
-  _civiimport_civix_civicrm_postInstall();
-}
-
-/**
- * Implements hook_civicrm_uninstall().
- *
- * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_uninstall
- */
-function civiimport_civicrm_uninstall() {
-  _civiimport_civix_civicrm_uninstall();
-}
-
-/**
  * Implements hook_civicrm_enable().
  *
  * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_enable
  */
 function civiimport_civicrm_enable() {
   _civiimport_civix_civicrm_enable();
-}
-
-/**
- * Implements hook_civicrm_disable().
- *
- * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_disable
- */
-function civiimport_civicrm_disable() {
-  _civiimport_civix_civicrm_disable();
-}
-
-/**
- * Implements hook_civicrm_upgrade().
- *
- * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_upgrade
- */
-function civiimport_civicrm_upgrade($op, CRM_Queue_Queue $queue = NULL) {
-  return _civiimport_civix_civicrm_upgrade($op, $queue);
 }
 
 /**
@@ -135,17 +99,17 @@ function _civiimport_civicrm_get_import_tables(): array {
        -- it is a new convention, at best, to require anything
        -- specific in the job_type, but it saves any onerous lookups
        -- in a function which needs to avoid loops
-       AND job_type LIKE "%import"
+       AND job_type LIKE "%import%"
          -- also more of a feature than a specification - but we need a table
          -- to do this pseudo-api
        AND metadata LIKE "%table_name%"');
   $importEntities = [];
   while ($tables->fetch()) {
     $tableName = json_decode($tables->metadata, TRUE)['DataSource']['table_name'];
-    if (!CRM_Utils_Rule::alphanumeric($tableName) || !CRM_Core_DAO::singleValueQuery('SHOW TABLES LIKE %1', [1 => [$tableName, 'String']])) {
+    if (!$tableName || !CRM_Utils_Rule::alphanumeric($tableName) || !CRM_Core_DAO::singleValueQuery('SHOW TABLES LIKE %1', [1 => [$tableName, 'String']])) {
       continue;
     }
-    $createdBy = $tables->display_name ? '' : ' (' . E::ts('Created by %1', [$tables->display_name, 'String']) . ')';
+    $createdBy = !$tables->display_name ? '' : ' (' . E::ts('created by %1', [1 => $tables->display_name]) . ')';
     $importEntities[$tables->id] = [
       'table_name' => $tableName,
       'created_by' => $tables->display_name,
@@ -154,7 +118,7 @@ function _civiimport_civicrm_get_import_tables(): array {
       'user_job_id' => (int) $tables->id,
       'created_date' => $tables->created_date,
       'expires_date' => $tables->expires_date,
-      'title' => ts('Import Job') . (int) $tables->id,
+      'title' => E::ts('Import Job %1', [1 => $tables->id]),
       'description' => $tables->created_date . $createdBy,
     ];
   }
@@ -174,12 +138,12 @@ function _civiimport_civicrm_get_import_tables(): array {
  * @throws \CRM_Core_Exception
  */
 function civiimport_civicrm_alterTemplateFile($formName, $form, $type, &$templateFile): void {
-  if ($formName === 'CRM_Contribute_Import_Form_MapField') {
+  if (in_array($formName, civiimport_enabled_forms())) {
     $templateFile = 'CRM/Import/MapField.tpl';
   }
   if ($formName === 'CRM_Queue_Page_Monitor') {
     $jobName = CRM_Utils_Request::retrieveValue('name', 'String');
-    if (strpos($jobName, 'user_job_') === 0) {
+    if (str_starts_with($jobName, 'user_job_')) {
       try {
         $userJobID = (int) str_replace('user_job_', '', $jobName);
         $jobType = UserJob::get()->addWhere('id', '=', $userJobID)
@@ -244,16 +208,16 @@ function civiimport_civicrm_searchKitTasks(array &$tasks, bool $checkPermissions
  * Load the angular app for our form.
  *
  * @param string $formName
- * @param \CRM_Core_Form|CRM_Contribute_Import_Form_MapField $form
+ * @param CRM_Contribute_Import_Form_MapField $form
  *
  * @throws \CRM_Core_Exception
  */
 function civiimport_civicrm_buildForm(string $formName, $form) {
-  if ($formName === 'CRM_Contribute_Import_Form_MapField') {
+  if (in_array($formName, civiimport_enabled_forms())) {
     // Add import-ui app
     Civi::service('angularjs.loader')->addModules('crmCiviimport');
     $form->assignCiviimportVariables();
-    $savedMappingID = (int) $form->getSubmittedValue('savedMapping');
+    $savedMappingID = (int) $form->getSavedMappingID();
     $savedMapping = [];
     if ($savedMappingID) {
       $savedMapping = Mapping::get()->addWhere('id', '=', $savedMappingID)->addSelect('id', 'name', 'description')->execute()->first();
@@ -274,7 +238,18 @@ function civiimport_civicrm_buildForm(string $formName, $form) {
     }
   }
 
-  if ($formName === 'CRM_Contact_Import_Form_Summary') {
-    $form->assign('downloadErrorRecordsUrl', '/civicrm/search#/display/Import_' . $form->getUserJobID() . '/Import_' . $form->getUserJobID() . '?_status=ERROR');
+  //@todo - do for all Preview forms - just need to fix each Preview.tpl to
+  // not open in new tab as they are not yet consolidated into one file.
+  // (Or consolidate them now).
+  if ($formName === 'CRM_Contact_Import_Form_Summary'
+    || $formName === 'CRM_Contribute_Import_Form_Preview') {
+    $form->assign('isOpenResultsInNewTab', TRUE);
+    $form->assign('downloadErrorRecordsUrl', CRM_Utils_System::url('civicrm/search', '', TRUE, '/display/Import_' . $form->getUserJobID() . '/Import_' . $form->getUserJobID() . '?_status=ERROR', FALSE));
+    $form->assign('allRowsUrl', CRM_Utils_System::url('civicrm/search', '', TRUE, '/display/Import_' . $form->getUserJobID() . '/Import_' . $form->getUserJobID(), FALSE));
+    $form->assign('importedRowsUrl', CRM_Utils_System::url('civicrm/search', '', TRUE, '/display/Import_' . $form->getUserJobID() . '/Import_' . $form->getUserJobID() . '?_status=IMPORTED', FALSE));
   }
+}
+
+function civiimport_enabled_forms() {
+  return ['CRM_Contribute_Import_Form_MapField', 'CRM_Member_Import_Form_MapField'];
 }

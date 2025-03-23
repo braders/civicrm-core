@@ -22,6 +22,9 @@
  * @copyright CiviCRM LLC https://civicrm.org/licensing
  */
 class CRM_Utils_API_HTMLInputCoder extends CRM_Utils_API_AbstractFieldCoder {
+  /**
+   * @var string[]
+   */
   private $skipFields = NULL;
 
   /**
@@ -40,18 +43,27 @@ class CRM_Utils_API_HTMLInputCoder extends CRM_Utils_API_AbstractFieldCoder {
   }
 
   /**
+   * @return void
+   */
+  public function flushCache(): void {
+    $this->skipFields = NULL;
+  }
+
+  /**
    * Get skipped fields.
    *
-   * @return array<string>
+   * @return string[]
    *   list of field names
    */
   public function getSkipFields() {
-    if ($this->skipFields === NULL) {
+    if (!isset($this->skipFields)) {
       $this->skipFields = [
         'widget_code',
         'html_message',
         'body_html',
         'msg_html',
+        // MessageTemplate subject might contain the < character in a smarty tag
+        'msg_subject',
         'description',
         'intro',
         'thankyou_text',
@@ -82,6 +94,7 @@ class CRM_Utils_API_HTMLInputCoder extends CRM_Utils_API_AbstractFieldCoder {
         'pay_later_text',
         'pay_later_receipt',
         // This is needed for FROM Email Address configuration. dgg
+        // TODO: Maybe can be removed now with the migration to "SiteEmailAddress" entity... but who knows if any other entity has a label field that allows html?
         'label',
         // This is needed for navigation items urls
         'url',
@@ -115,10 +128,16 @@ class CRM_Utils_API_HTMLInputCoder extends CRM_Utils_API_AbstractFieldCoder {
         'settings',
         // SearchSegment items
         'items',
+        // Survey entity
+        'instructions',
       ];
-      $custom = CRM_Core_DAO::executeQuery('SELECT id FROM civicrm_custom_field WHERE html_type = "RichTextEditor"');
+      $custom = CRM_Core_DAO::executeQuery('
+        SELECT cf.id, cf.name AS field_name, cg.name AS group_name
+        FROM civicrm_custom_field cf, civicrm_custom_group cg
+        WHERE cf.custom_group_id = cg.id AND cf.data_type = "Memo"');
       while ($custom->fetch()) {
         $this->skipFields[] = 'custom_' . $custom->id;
+        $this->skipFields[] = $custom->group_name . '.' . $custom->field_name;
       }
     }
     return $this->skipFields;

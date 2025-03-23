@@ -81,7 +81,7 @@ function civicrm_api3_profile_get($params) {
 
       $contactFields = $activityFields = [];
       foreach ($profileFields as $fieldName => $field) {
-        if (CRM_Utils_Array::value('field_type', $field) == 'Activity') {
+        if (($field['field_type'] ?? NULL) === 'Activity') {
           $activityFields[$fieldName] = $field;
         }
         else {
@@ -193,7 +193,7 @@ function civicrm_api3_profile_submit($params) {
     $contactEntities = ['contact', 'individual', 'organization', 'household'];
     $locationEntities = ['email', 'address', 'phone', 'website', 'im'];
 
-    $entity = strtolower(CRM_Utils_Array::value('entity', $field, ''));
+    $entity = strtolower($field['entity'] ?? '');
     if ($entity && !in_array($entity, array_merge($contactEntities, $locationEntities))) {
       switch ($entity) {
         case 'note':
@@ -244,7 +244,7 @@ function civicrm_api3_profile_submit($params) {
     ];
   }
 
-  $contactParams['contact_id'] = empty($params['contact_id']) ? CRM_Utils_Array::value('id', $params) : $params['contact_id'];
+  $contactParams['contact_id'] = empty($params['contact_id']) ? ($params['id'] ?? NULL) : $params['contact_id'];
   $contactParams['profile_id'] = $profileID;
   $contactParams['skip_custom'] = 1;
 
@@ -277,7 +277,7 @@ function civicrm_api3_profile_submit($params) {
  *   BAO Field Name
  */
 function _civicrm_api3_profile_translate_fieldnames_for_bao($fieldName) {
-  $fieldName = str_replace('url', 'URL', $fieldName);
+  $fieldName = str_replace('image_url', 'image_URL', $fieldName);
   return str_replace('primary', 'Primary', $fieldName);
 }
 
@@ -298,7 +298,7 @@ function _civicrm_api3_profile_submit_spec(&$params, $apirequest) {
     // we don't resolve state, country & county for performance reasons
     $resolveOptions = ($apirequest['params']['get_options'] ?? NULL) == 'all';
     $profileID = _civicrm_api3_profile_getProfileID($apirequest['params']['profile_id']);
-    $params = _civicrm_api3_buildprofile_submitfields($profileID, $resolveOptions, CRM_Utils_Array::value('cache_clear', $params));
+    $params = _civicrm_api3_buildprofile_submitfields($profileID, $resolveOptions, $params['cache_clear'] ?? FALSE);
   }
   elseif (isset($apirequest['params']['cache_clear'])) {
     _civicrm_api3_buildprofile_submitfields(FALSE, FALSE, TRUE);
@@ -310,23 +310,6 @@ function _civicrm_api3_profile_submit_spec(&$params, $apirequest) {
     unset($params['tag_id']['pseudoconstant']);
     $params['tag_id']['type'] = CRM_Utils_Type::T_STRING;
   }
-}
-
-/**
- * Update Profile field values.
- *
- * @deprecated - calling this function directly is deprecated as 'set' is not a clear action
- * use submit
- *
- * @param array $params
- *   Array of property name/value.
- *   pairs to update profile field values
- *
- * @return array
- *   Updated Contact/ Activity object|CRM_Error
- */
-function civicrm_api3_profile_set($params) {
-  return civicrm_api3('profile', 'submit', $params);
 }
 
 /**
@@ -360,10 +343,10 @@ function civicrm_api3_profile_apply($params) {
 
   list($data, $contactDetails) = CRM_Contact_BAO_Contact::formatProfileContactParams($params,
     $profileFields,
-    CRM_Utils_Array::value('contact_id', $params),
+    $params['contact_id'] ?? NULL,
     $params['profile_id'],
-    CRM_Utils_Array::value('contact_type', $params),
-    CRM_Utils_Array::value('skip_custom', $params, FALSE)
+    $params['contact_type'] ?? NULL,
+    $params['skip_custom'] ?? FALSE
   );
 
   if (empty($data)) {
@@ -508,6 +491,7 @@ function _civicrm_api3_buildprofile_submitfields($profileID, $optionsBehaviour, 
     }
     list($entity, $fieldName) = _civicrm_api3_map_profile_fields_to_entity($field);
     $aliasArray = [];
+    // Use alias to handle the inconsistency between -Primary and -primary suffixes
     if (strtolower($fieldName) != $fieldName) {
       $aliasArray['api.aliases'] = [$fieldName];
       $fieldName = strtolower($fieldName);
@@ -575,7 +559,9 @@ function _civicrm_api3_buildprofile_submitfields($profileID, $optionsBehaviour, 
           }
         }
       }
-      $profileFields[$profileID][$fieldName] = array_merge($entityGetFieldsResult[$realName], $profileFields[$profileID][$entityfield]);
+      if (!empty($entityGetFieldsResult[$realName])) {
+        $profileFields[$profileID][$fieldName] = array_merge($entityGetFieldsResult[$realName], $profileFields[$profileID][$entityfield]);
+      }
       if (!isset($profileFields[$profileID][$fieldName]['api.aliases'])) {
         $profileFields[$profileID][$fieldName]['api.aliases'] = [];
       }
@@ -604,7 +590,7 @@ function _civicrm_api3_buildprofile_submitfields($profileID, $optionsBehaviour, 
        */
     }
   }
-  $profileFields[$profileID] = $profileFields[$profileID] ?? [];
+  $profileFields[$profileID] ??= [];
   uasort($profileFields[$profileID], "_civicrm_api3_order_by_weight");
   return $profileFields[$profileID];
 }
@@ -629,30 +615,23 @@ function _civicrm_api3_order_by_weight($a, $b) {
  */
 function _civicrm_api3_map_profile_fields_to_entity(&$field) {
   $entity = $field['field_type'];
-  $contactTypes = civicrm_api3('contact', 'getoptions', ['field' => 'contact_type']);
-  if (in_array($entity, $contactTypes['values'])) {
+  // let's get the contact types and subtypes so that we can change the entity
+  // of such fields to 'contact'
+  $result = civicrm_api3('ContactType', 'get', [
+    'return' => ["name"],
+    'options' => ['limit' => 0],
+  ]);
+
+  $contactTypes = [];
+  foreach ($result['values'] as $type) {
+    $contactTypes[$type['id']] = $type['name'];
+  }
+
+  if (in_array($entity, $contactTypes)) {
     $entity = 'contact';
   }
   $entity = _civicrm_api_get_entity_name_from_camel($entity);
-  $locationFields = ['email', 'phone'];
   $fieldName = $field['field_name'];
-  if (!empty($field['location_type_id'])) {
-    if (in_array($fieldName, $locationFields)) {
-      $entity = $fieldName;
-    }
-    else {
-      $entity = 'address';
-    }
-    $fieldName .= '-' . $field['location_type_id'];
-  }
-  elseif (in_array($fieldName, $locationFields)) {
-    $entity = $fieldName;
-    $fieldName .= '-Primary';
-  }
-  if (!empty($field['phone_type_id'])) {
-    $fieldName .= '-' . $field['phone_type_id'];
-    $entity = 'phone';
-  }
 
   // @todo - sort this out!
   //here we do a hard-code list of known fields that don't map to where they are mapped to
@@ -668,6 +647,10 @@ function _civicrm_api3_map_profile_fields_to_entity(&$field) {
     'postal_code' => 'address',
     'city' => 'address',
     'email' => 'email',
+    'phone' => 'phone',
+    'phone_and_ext' => 'phone',
+    'url' => 'website',
+    'im' => 'im',
     'state_province' => 'address',
     'country' => 'address',
     'county' => 'address',
@@ -689,6 +672,23 @@ function _civicrm_api3_map_profile_fields_to_entity(&$field) {
   if (array_key_exists($fieldName, $hardCodedEntityMappings)) {
     $entity = $hardCodedEntityMappings[$fieldName];
   }
+
+  $locationEntities = ['email', 'phone', 'address', 'im'];
+  if (!empty($field['location_type_id'])) {
+    $fieldName .= '-' . $field['location_type_id'];
+  }
+  elseif (in_array($entity, $locationEntities)) {
+    $fieldName .= '-Primary';
+  }
+  if (!empty($field['phone_type_id'])) {
+    $fieldName .= '-' . $field['phone_type_id'];
+    $entity = 'phone';
+  }
+  if (!empty($field['website_type_id'])) {
+    $fieldName .= '-' . $field['website_type_id'];
+    $entity = 'website';
+  }
+
   return [$entity, $fieldName];
 }
 
@@ -745,7 +745,6 @@ function _civicrm_api3_profile_appendaliases($values, $entity) {
  */
 function _civicrm_api3_profile_deprecation() {
   return [
-    'set' => 'Profile api "set" action is deprecated in favor of "submit".',
     'apply' => 'Profile api "apply" action is deprecated in favor of "submit".',
   ];
 }

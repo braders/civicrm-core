@@ -21,6 +21,7 @@ namespace Civi\Api4;
  * @see https://docs.civicrm.org/user/en/latest/organising-your-data/contacts/
  * @searchable primary
  * @orderBy sort_name
+ * @searchFields sort_name
  * @iconField contact_sub_type:icon,contact_type:icon
  * @since 5.19
  * @package Civi\Api4
@@ -32,7 +33,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\Create
    */
   public static function create($checkPermissions = TRUE) {
-    return (new Action\Contact\Create(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\Create(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -41,7 +42,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\Update
    */
   public static function update($checkPermissions = TRUE) {
-    return (new Action\Contact\Update(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\Update(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -50,7 +51,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\Save
    */
   public static function save($checkPermissions = TRUE) {
-    return (new Action\Contact\Save(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\Save(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -59,7 +60,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\Delete
    */
   public static function delete($checkPermissions = TRUE) {
-    return (new Action\Contact\Delete(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\Delete(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -68,7 +69,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\GetChecksum
    */
   public static function getChecksum($checkPermissions = TRUE) {
-    return (new Action\Contact\GetChecksum(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\GetChecksum(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -77,7 +78,7 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\ValidateChecksum
    */
   public static function validateChecksum($checkPermissions = TRUE) {
-    return (new Action\Contact\ValidateChecksum(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\ValidateChecksum(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
@@ -86,17 +87,72 @@ class Contact extends Generic\DAOEntity {
    * @return Action\Contact\GetDuplicates
    */
   public static function getDuplicates($checkPermissions = TRUE) {
-    return (new Action\Contact\GetDuplicates(__CLASS__, __FUNCTION__))
+    return (new Action\Contact\GetDuplicates(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
   }
 
   /**
    * @param bool $checkPermissions
+   *
    * @return Action\Contact\MergeDuplicates
    */
-  public static function mergeDuplicates($checkPermissions = TRUE) {
-    return (new Action\Contact\MergeDuplicates(__CLASS__, __FUNCTION__))
+  public static function mergeDuplicates(bool $checkPermissions = TRUE): Action\Contact\MergeDuplicates {
+    return (new Action\Contact\MergeDuplicates(self::getEntityName(), __FUNCTION__))
       ->setCheckPermissions($checkPermissions);
+  }
+
+  /**
+   * @param bool $checkPermissions
+   *
+   * @return Action\Contact\GetMergedTo
+   */
+  public static function getMergedTo(bool $checkPermissions = TRUE): Action\Contact\GetMergedTo {
+    return (new Action\Contact\GetMergedTo(self::getEntityName(), __FUNCTION__))
+      ->setCheckPermissions($checkPermissions);
+  }
+
+  /**
+   * @param bool $checkPermissions
+   *
+   * @return Action\Contact\GetMergedFrom
+   */
+  public static function getMergedFrom(bool $checkPermissions = TRUE): Action\Contact\GetMergedFrom {
+    return (new Action\Contact\GetMergedFrom(self::getEntityName(), __FUNCTION__))
+      ->setCheckPermissions($checkPermissions);
+  }
+
+  protected static function getDaoName(): string {
+    // Child classes (Individual, Organization, Household) need this.
+    return 'CRM_Contact_DAO_Contact';
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public static function getInfo(): array {
+    $info = parent::getInfo();
+    $contactType = static::getEntityName();
+    // Adjust info for child classes (Individual, Organization, Household)
+    if ($contactType !== 'Contact') {
+      $contactTypeInfo = \CRM_Contact_BAO_ContactType::getContactType($contactType);
+      $info['icon'] = $contactTypeInfo['icon'] ?? $info['icon'];
+      $info['type'] = ['DAOEntity', 'ContactType'];
+      $info['description'] = ts('Contacts of type %1.', [1 => $contactTypeInfo['label']]);
+      // This forces the value into get and create api actions
+      $info['where'] = ['contact_type' => $contactType];
+    }
+    return $info;
+  }
+
+  /**
+   * Override base method so it can be shared with Individual, Household, Organization APIs.
+   */
+  public static function permissions() {
+    $allPermissions = \CRM_Core_Permission::getEntityActionPermissions();
+    $permissions = ($allPermissions['contact'] ?? []) + $allPermissions['default'];
+    // Checksums are meant for anonymous use
+    $permissions['validateChecksum'] = [];
+    return $permissions;
   }
 
 }

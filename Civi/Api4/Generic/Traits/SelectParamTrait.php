@@ -52,13 +52,13 @@ trait SelectParamTrait {
    *
    * @throws \CRM_Core_Exception
    */
-  protected function expandSelectClauseWildcards() {
+  public function expandSelectClauseWildcards() {
     if (!$this->select) {
       $this->select = ['*'];
     }
     // Get expressions containing wildcards but no dots or parentheses
     $wildFields = array_filter($this->select, function($item) {
-      return strpos($item, '*') !== FALSE && strpos($item, '.') === FALSE && strpos($item, '(') === FALSE && strpos($item, ' ') === FALSE;
+      return str_contains($item, '*') && !str_contains($item, '.') && !str_contains($item, '(') && !str_contains($item, ' ');
     });
     if ($wildFields) {
       // Wildcards should not match "Extra" fields

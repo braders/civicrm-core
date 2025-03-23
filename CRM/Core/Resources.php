@@ -103,12 +103,12 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
   /**
    * Get or set the single instance of CRM_Core_Resources.
    *
-   * @param CRM_Core_Resources $instance
+   * @param CRM_Core_Resources|null $instance
    *   New copy of the manager.
    *
    * @return CRM_Core_Resources
    */
-  public static function singleton(CRM_Core_Resources $instance = NULL) {
+  public static function singleton(?CRM_Core_Resources $instance = NULL) {
     if ($instance !== NULL) {
       self::$_singleton = $instance;
     }
@@ -290,8 +290,8 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
     // TODO consider caching results
     $base = $this->paths->hasVariable($ext)
       ? $this->paths->getVariable($ext, 'url')
-      : ($this->extMapper->keyToUrl($ext) . '/');
-    return $base . $file;
+      : $this->extMapper->keyToUrl($ext);
+    return rtrim($base, '/') . "/$file";
   }
 
   /**
@@ -378,9 +378,15 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
       // it appears that all callers use 'html-header' (either implicitly or explicitly).
       throw new \CRM_Core_Exception("Error: addCoreResources only supports html-header");
     }
-    if (!self::isAjaxMode()) {
+    // Skip adding full-page resources when returning an ajax snippet or in printer mode (print.tpl has its own css)
+    if (!self::isAjaxMode() && intval($_GET['snippet'] ?? 0) !== CRM_Core_Smarty::PRINT_PAGE) {
       $this->addBundle('coreResources');
       $this->addCoreStyles($region);
+      if (!CRM_Core_Config::isUpgradeMode()) {
+        // This ensures that if a popup link requires AngularJS, it will always be available.
+        // Additional Ang modules required by popups will be loaded on-the-fly by Civi\Angular\AngularLoader
+        Civi::service('angularjs.loader')->addModules(['crmResource']);
+      }
     }
     return $this;
   }
@@ -420,7 +426,30 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
   }
 
   /**
+   * Get the params used to render crm-l10n.js
+   * Gets called above the caching layer and then used
+   * in the render function below
+   */
+  public static function getL10nJsParams(): array {
+    $settings = Civi::settings();
+    return [
+      'cid' => CRM_Core_Session::getLoggedInContactID() ?: 0,
+      'includeEmailInName' => (bool) $settings->get('includeEmailInName'),
+      'ajaxPopupsEnabled' => (bool) $settings->get('ajaxPopupsEnabled'),
+      'allowAlertAutodismissal' => (bool) $settings->get('allow_alert_autodismissal'),
+      'resourceCacheCode' => Civi::resources()->getCacheCode(),
+      'locale' => CRM_Core_I18n::getLocale(),
+      'lcMessages' => $settings->get('lcMessages'),
+      'dateInputFormat' => $settings->get('dateInputFormat'),
+      'timeInputFormat' => $settings->get('timeInputFormat'),
+      'moneyFormat' => CRM_Utils_Money::format(1234.56),
+    ];
+  }
+
+  /**
    * Create dynamic script for localizing js widgets.
+   * Params come from the function above
+   * @see getL10nJsParams
    */
   public static function renderL10nJs(GenericHookEvent $e) {
     if ($e->asset !== 'crm-l10n.js') {
@@ -429,11 +458,48 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
     $e->mimeType = 'application/javascript';
     $params = $e->params;
     $params += [
-      'contactSearch' => json_encode($params['includeEmailInName'] ? ts('Search by name/email or id...') : ts('Search by name or id...')),
+      'contactSearch' => json_encode(!empty($params['includeEmailInName']) ? ts('Search by name/email or id...') : ts('Search by name or id...')),
       'otherSearch' => json_encode(ts('Enter search term or id...')),
       'entityRef' => self::getEntityRefMetadata(),
+      'quickAdd' => self::getQuickAddForms($e->params['cid']),
     ];
     $e->content = CRM_Core_Smarty::singleton()->fetchWith('CRM/common/l10n.js.tpl', $params);
+  }
+
+  /**
+   * Gets links to "Quick Add" forms, for use in Autocomplete widgets
+   *
+   * @param int|null $cid
+   * @return array
+   */
+  private static function getQuickAddForms(?int $cid): array {
+    $forms = [];
+    try {
+      $contactTypes = CRM_Contact_BAO_ContactType::getAllContactTypes();
+      $routes = \Civi\Api4\Route::get(FALSE)
+        ->addSelect('path', 'title', 'access_arguments')
+        ->addWhere('path', 'LIKE', 'civicrm/quick-add/%')
+        ->execute();
+      foreach ($routes as $route) {
+        // Ensure user has permission to use the form
+        if (!empty($route['access_arguments'][0]) && !CRM_Core_Permission::check($route['access_arguments'][0], $cid)) {
+          continue;
+        }
+        // Ensure API entity exists
+        [, , $entityType] = array_pad(explode('/', $route['path']), 3, '*');
+        if (\Civi\Api4\Utils\CoreUtil::entityExists($entityType)) {
+          $forms[] = [
+            'entity' => $entityType,
+            'path' => $route['path'],
+            'title' => $route['title'],
+            'icon' => \Civi\Api4\Utils\CoreUtil::getInfoItem($entityType, 'icon'),
+          ];
+        }
+      }
+    }
+    catch (CRM_Core_Exception $e) {
+    }
+    return $forms;
   }
 
   /**
@@ -441,7 +507,7 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
    *   is this page request an ajax snippet?
    */
   public static function isAjaxMode() {
-    if (in_array(CRM_Utils_Array::value('snippet', $_REQUEST), [
+    if (in_array($_REQUEST['snippet'] ?? '', [
       CRM_Core_Smarty::PRINT_SNIPPET,
       CRM_Core_Smarty::PRINT_NOFORM,
       CRM_Core_Smarty::PRINT_JSON,
@@ -449,8 +515,9 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
     ) {
       return TRUE;
     }
-    [$arg0, $arg1] = array_pad(explode('/', (CRM_Utils_System::currentPath() ?? '')), 2, '');
-    return ($arg0 === 'civicrm' && in_array($arg1, ['ajax', 'angularprofiles', 'asset']));
+    $path = explode('/', (CRM_Utils_System::currentPath() ?? ''));
+    [$arg0, $arg1] = array_pad($path, 2, '');
+    return ($arg0 === 'civicrm' && (in_array($arg1, ['angularprofiles', 'asset']) || in_array('ajax', $path, TRUE)));
   }
 
   /**
@@ -537,7 +604,7 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
    *   system policy, the minified version will be returned. Otherwise, the original.
    */
   public function filterMinify($ext, $file) {
-    if (CRM_Core_Config::singleton()->debug && strpos($file, '.min.') !== FALSE) {
+    if (CRM_Core_Config::singleton()->debug && str_contains($file, '.min.')) {
       $nonMiniFile = str_replace('.min.', '.', $file);
       if ($this->getPath($ext, $nonMiniFile)) {
         $file = $nonMiniFile;
@@ -551,7 +618,7 @@ class CRM_Core_Resources implements CRM_Core_Resources_CollectionAdderInterface 
    * @return string
    */
   public function addCacheCode($url) {
-    $hasQuery = strpos($url, '?') !== FALSE;
+    $hasQuery = str_contains($url, '?');
     $operator = $hasQuery ? '&' : '?';
 
     return $url . $operator . 'r=' . $this->getCacheCode();

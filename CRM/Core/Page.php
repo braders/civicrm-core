@@ -132,6 +132,8 @@ class CRM_Core_Page {
     // in 'body.tpl
     'suppressForm',
     'beginHookFormElements',
+    // This is checked in validate.tpl
+    'snippet_type',
   ];
 
   /**
@@ -140,6 +142,16 @@ class CRM_Core_Page {
    * @var string
    */
   public $_permission;
+
+  /**
+   * @var int
+   */
+  protected $_action;
+
+  /**
+   * @var int
+   */
+  protected $_id;
 
   /**
    * Class constructor.
@@ -206,8 +218,6 @@ class CRM_Core_Page {
     $pageTemplateFile = $this->getHookedTemplateFileName();
     self::$_template->assign('tplFile', $pageTemplateFile);
 
-    self::$_template->addExpectedTabHeaderKeys();
-
     // invoke the pagRun hook, CRM-3906
     CRM_Utils_Hook::pageRun($this);
 
@@ -258,12 +268,7 @@ class CRM_Core_Page {
       CRM_Core_Resources::singleton()->addScriptFile('civicrm', 'js/crm.livePage.js', 1, 'html-header');
     }
 
-    $content = self::$_template->fetch('CRM/common/' . strtolower($config->userFramework) . '.tpl');
-
-    // Render page header
-    if (!defined('CIVICRM_UF_HEAD') && $region = CRM_Core_Region::instance('html-header', FALSE)) {
-      CRM_Utils_System::addHTMLHead($region->render(''));
-    }
+    $content = self::$_template->fetch(CRM_Utils_System::getContentTemplate());
     CRM_Utils_System::appendTPLFile($pageTemplateFile, $content);
 
     //its time to call the hook.
@@ -311,9 +316,12 @@ class CRM_Core_Page {
    * @param string $var
    * @param mixed $value
    *   (reference) value of variable.
+   *
+   * @deprecated since 5.72 will be removed around 5.84
    */
   public function assign_by_ref($var, &$value) {
-    self::$_template->assign_by_ref($var, $value);
+    CRM_Core_Error::deprecatedFunctionWarning('assign');
+    self::$_template->assign($var, $value);
   }
 
   /**
@@ -331,12 +339,23 @@ class CRM_Core_Page {
   /**
    * Returns an array containing template variables.
    *
+   * @deprecated since 5.69 will be removed around 5.93. use getTemplateVars.
+   *
    * @param string $name
    *
    * @return array
    */
   public function get_template_vars($name = NULL) {
-    return self::$_template->get_template_vars($name);
+    return $this->getTemplateVars($name);
+  }
+
+  /**
+   * Get the value/s assigned to the Template Engine (Smarty).
+   *
+   * @param string|null $name
+   */
+  public function getTemplateVars($name = NULL) {
+    return self::$_template->getTemplateVars($name);
   }
 
   /**
@@ -465,7 +484,7 @@ class CRM_Core_Page {
     $fields = civicrm_api3($entity, 'getfields', ['action' => 'get']);
     $dateFields = [];
     foreach ($fields['values'] as $fieldName => $fieldMetaData) {
-      if (isset($fieldMetaData['html']) && CRM_Utils_Array::value('type', $fieldMetaData['html']) == 'Select Date') {
+      if (isset($fieldMetaData['html']) && ($fieldMetaData['html']['type'] ?? NULL) == 'Select Date') {
         $dateFields[$fieldName] = CRM_Utils_Date::addDateMetadataToField($fieldMetaData, $fieldMetaData);
       }
     }
@@ -505,7 +524,7 @@ class CRM_Core_Page {
 
     $standardAttribs = ['aria-hidden' => 'true'];
     if ($text === NULL || $text === '') {
-      $title = $sr = '';
+      $sr = '';
     }
     else {
       $standardAttribs['title'] = $text;
@@ -545,6 +564,10 @@ class CRM_Core_Page {
       // Duplicates don't actually matter....
       $this->addExpectedSmartyVariable($elementName);
     }
+  }
+
+  public function invalidKey() {
+    throw new CRM_Core_Exception(ts("Sorry, your session has expired. Please reload the page or go back and try again."), 419, [ts("Could not find a valid session key.")]);
   }
 
 }

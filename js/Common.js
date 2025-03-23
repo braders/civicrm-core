@@ -351,7 +351,7 @@ if (!CRM.vars) CRM.vars = {};
    * @returns {*}
    */
   CRM.utils.adjustDialogDefaults = function(settings) {
-    settings = $.extend({width: '65%', height: '65%', modal: true}, settings || {});
+    settings = $.extend({width: '65%', height: '40%', modal: true}, settings || {});
     // Support relative height
     if (typeof settings.height === 'string' && settings.height.indexOf('%') > 0) {
       settings.height = parseInt($(window).height() * (parseFloat(settings.height)/100), 10);
@@ -538,14 +538,28 @@ if (!CRM.vars) CRM.vars = {};
     });
   }
 
-  function getStaticOptionMarkup(staticItems) {
+  function renderQuickAddMarkup(quickAddLinks) {
+    if (!quickAddLinks || !quickAddLinks.length) {
+      return '';
+    }
+    let markup = '<div class="crm-entityref-links crm-entityref-quick-add">';
+    quickAddLinks.forEach((link) => {
+      markup += ' <a class="crm-hover-button" href="' + _.escape(CRM.url(link.path)) + '">' +
+        '<i class="crm-i ' + _.escape(link.icon) + '" aria-hidden="true"></i> ' +
+        _.escape(link.title) + '</a>';
+    });
+    markup += '</div>';
+    return markup;
+  }
+
+  function renderStaticOptionMarkup(staticItems) {
     if (!staticItems.length) {
       return '';
     }
     var markup = '<div class="crm-entityref-links crm-entityref-links-static">';
     _.each(staticItems, function(link) {
-      markup += ' <a class="crm-hover-button" href="#' + link.id + '">' +
-        '<i class="crm-i ' + link.icon + '" aria-hidden="true"></i> ' +
+      markup += ' <a class="crm-hover-button" href="#' + _.escape(link.id) + '">' +
+        '<i class="crm-i ' + _.escape(link.icon) + '" aria-hidden="true"></i> ' +
         _.escape(link.label) + '</a>';
     });
     markup += '</div>';
@@ -554,13 +568,40 @@ if (!CRM.vars) CRM.vars = {};
 
   // Autocomplete based on APIv4 and Select2.
   $.fn.crmAutocomplete = function(entityName, apiParams, select2Options) {
+    function getApiParams() {
+      if (typeof apiParams === 'function') {
+        return apiParams();
+      }
+      return apiParams || {};
+    }
+    function getQuickAddLinks(paths) {
+      const links = [];
+      if (paths && paths.length) {
+        const apiParams = getApiParams();
+        paths.forEach((path) => {
+          let link = CRM.config.quickAdd.find((link) => link.path === path);
+          if (link) {
+            links.push({
+              path: path + '#?' + $.param({
+                parentFormName: apiParams.formName,
+                parentFormFieldName: apiParams.fieldName,
+              }),
+              icon: link.icon,
+              title: link.title,
+            });
+          }
+        });
+      }
+      return links;
+    }
     if (entityName === 'destroy') {
       return $(this).off('.crmEntity').crmSelect2('destroy');
     }
     select2Options = select2Options || {};
     return $(this).each(function() {
-      var $el = $(this).off('.crmEntity'),
-        staticItems = getStaticOptions(select2Options.static),
+      const $el = $(this).off('.crmEntity');
+      let staticItems = getStaticOptions(select2Options.static),
+        quickAddLinks = getQuickAddLinks(select2Options.quickAdd),
         multiple = !!select2Options.multiple;
 
       $el.crmSelect2(_.extend({
@@ -571,7 +612,7 @@ if (!CRM.vars) CRM.vars = {};
             return {params: JSON.stringify(_.assign({
               input: input,
               page: pageNum || 1
-            }, apiParams))};
+            }, getApiParams()))};
           },
           results: function(data) {
             return {
@@ -596,26 +637,35 @@ if (!CRM.vars) CRM.vars = {};
           // If we already have the data, just return it
           if (!idsNeeded.length) {
             callback(multiple ? existing : existing[0]);
+            $el.trigger('initSelectionComplete');
           } else {
-            var params = $.extend({}, apiParams || {}, {ids: idsNeeded});
+            var params = $.extend({}, getApiParams(), {ids: idsNeeded});
             CRM.api4(entityName, 'autocomplete', params).then(function (result) {
               callback(multiple ? result.concat(existing) : result[0]);
+              $el.trigger('initSelectionComplete');
             });
           }
         },
         formatInputTooShort: function() {
-          var txt = $.fn.select2.defaults.formatInputTooShort.call(this);
-          txt += getStaticOptionMarkup(staticItems);
-          return txt;
+          let html = _.escape($.fn.select2.defaults.formatInputTooShort.call(this));
+          html += renderStaticOptionMarkup(staticItems);
+          html += renderQuickAddMarkup(quickAddLinks);
+          return html;
+        },
+        formatNoMatches: function() {
+          let html = _.escape($.fn.select2.defaults.formatNoMatches);
+          html += renderQuickAddMarkup(quickAddLinks);
+          return html;
         }
       }, select2Options));
 
-      $el.on('select2-open.crmEntity', function() {
+      $el.on('select2-open.crmEntity', function(){
         var $el = $(this);
         $('#select2-drop')
           .off('.crmEntity')
-          .on('click.crmEntity', '.crm-entityref-links-static a', function(e) {
-            var id = $(this).attr('href').substr(1),
+          // Add static item to selection when clicking static links
+          .on('click.crmEntity', '.crm-entityref-links-static a', function() {
+            let id = $(this).attr('href').substring(1),
               item = _.findWhere(staticItems, {id: id});
             $el.select2('close');
             if (multiple) {
@@ -627,6 +677,35 @@ if (!CRM.vars) CRM.vars = {};
             } else {
               $el.select2('data', item, true);
             }
+            return false;
+          })
+          // Pop-up Afform when clicking quick-add links
+          .on('click.crmEntity', '.crm-entityref-quick-add a', function() {
+            let url = $(this).attr('href');
+            $el.select2('close');
+            CRM.loadForm(url).on('crmFormSuccess', (e, data) => {
+              // Quick-add Afform has been submitted, parse submission data for id of created entity
+              const response = data.submissionResponse && data.submissionResponse[0];
+              let createdId;
+              if (typeof response === 'object') {
+                let key = getApiParams().key || 'id';
+                // Loop through entities created by the afform (there should be only one)
+                Object.keys(response).forEach((entity) => {
+                  if (Array.isArray(response[entity]) && response[entity][0] && response[entity][0][key]) {
+                    createdId = response[entity][0][key];
+                  }
+                });
+              }
+              // Update field value with new id and the widget will automatically fetch the label
+              if (createdId) {
+                if (multiple && $el.val()) {
+                  // Select2 v3 uses a string instead of array for multiple values
+                  $el.val($el.val() + ',' + createdId).change();
+                } else {
+                  $el.val('' + createdId).change();
+                }
+              }
+            });
             return false;
           });
       });
@@ -745,12 +824,12 @@ if (!CRM.vars) CRM.vars = {};
       }
       else {
         selectParams.formatInputTooShort = function() {
-          var txt = $el.data('select-params').formatInputTooShort || $.fn.select2.defaults.formatInputTooShort.call(this);
+          var txt = _.escape($el.data('select-params').formatInputTooShort || $.fn.select2.defaults.formatInputTooShort.call(this));
           txt += entityRefFiltersMarkup($el) + renderEntityRefCreateLinks($el);
           return txt;
         };
         selectParams.formatNoMatches = function() {
-          var txt = $el.data('select-params').formatNoMatches || $.fn.select2.defaults.formatNoMatches;
+          var txt = _.escape($el.data('select-params').formatNoMatches || $.fn.select2.defaults.formatNoMatches);
           txt += entityRefFiltersMarkup($el) + renderEntityRefCreateLinks($el);
           return txt;
         };
@@ -844,14 +923,14 @@ if (!CRM.vars) CRM.vars = {};
   CRM.utils.formatSelect2Result = function (row) {
     var markup = '<div class="crm-select2-row">';
     if (row.image !== undefined) {
-      markup += '<div class="crm-select2-image"><img src="' + row.image + '"/></div>';
+      markup += '<div class="crm-select2-image"><img src="' + _.escape(row.image) + '"/></div>';
     }
     else if (row.icon_class) {
-      markup += '<div class="crm-select2-icon"><div class="crm-icon ' + row.icon_class + '-icon"></div></div>';
+      markup += '<div class="crm-select2-icon"><div class="crm-icon ' + _.escape(row.icon_class) + '-icon"></div></div>';
     }
-    markup += '<div><div class="crm-select2-row-label '+(row.label_class || '')+'">' +
-      (row.color ? '<span class="crm-select-item-color" style="background-color: ' + row.color + '"></span> ' : '') +
-      (row.icon ? '<i class="crm-i ' + row.icon + '" aria-hidden="true"></i> ' : '') +
+    markup += '<div><div class="crm-select2-row-label ' + _.escape(row.label_class || '') + '">' +
+      (row.color ? '<span class="crm-select-item-color" style="background-color: ' + _.escape(row.color) + '"></span> ' : '') +
+      (row.icon ? '<i class="crm-i ' + _.escape(row.icon) + '" aria-hidden="true"></i> ' : '') +
       _.escape((row.prefix !== undefined ? row.prefix + ' ' : '') + row.label + (row.suffix !== undefined ? ' ' + row.suffix : '')) +
       '</div>' +
       '<div class="crm-select2-row-description">';
@@ -863,7 +942,7 @@ if (!CRM.vars) CRM.vars = {};
   };
 
   function formatEntityRefSelection(row) {
-    return (row.color ? '<span class="crm-select-item-color" style="background-color: ' + row.color + '"></span> ' : '') +
+    return (row.color ? '<span class="crm-select-item-color" style="background-color: ' + _.escape(row.color) + '"></span> ' : '') +
       _.escape((row.prefix !== undefined ? row.prefix + ' ' : '') + row.label + (row.suffix !== undefined ? ' ' + row.suffix : ''));
   }
 
@@ -893,8 +972,8 @@ if (!CRM.vars) CRM.vars = {};
       }
     }
     _.each(createLinks, function(link) {
-      markup += ' <a class="crm-add-entity crm-hover-button" href="' + link.url + '">' +
-        '<i class="crm-i ' + (link.icon || 'fa-plus-circle') + '" aria-hidden="true"></i> ' +
+      markup += ' <a class="crm-add-entity crm-hover-button" href="' + _.escape(link.url) + '">' +
+        '<i class="crm-i ' + _.escape(link.icon || 'fa-plus-circle') + '" aria-hidden="true"></i> ' +
         _.escape(link.label) + '</a>';
     });
     markup += '</div>';
@@ -1113,26 +1192,19 @@ if (!CRM.vars) CRM.vars = {};
       $('table.crm-ajax-table', e.target).each(function() {
         var
           $table = $(this),
-          script = CRM.config.resourceBase + 'js/jquery/jquery.crmAjaxTable.js',
-          $accordion = $table.closest('.crm-accordion-wrapper.collapsed, .crm-collapsible.collapsed');
-        // For tables hidden by collapsed accordions, wait.
-        if ($accordion.length) {
-          $accordion.one('crmAccordion:open', function() {
-            CRM.loadScript(script).done(function() {
-              $table.crmAjaxTable();
-            });
-          });
-        } else {
-          CRM.loadScript(script).done(function() {
-            $table.crmAjaxTable();
-          });
-        }
+          script = CRM.config.resourceBase + 'js/jquery/jquery.crmAjaxTable.js';
+        CRM.loadScript(script).done(function() {
+          $table.crmAjaxTable();
+        });
       });
       if ($("input:radio[name=radio_ts]").length == 1) {
         $("input:radio[name=radio_ts]").prop("checked", true);
       }
       $('.crm-select2:not(.select2-offscreen, .select2-container)', e.target).crmSelect2();
       $('.crm-form-entityref:not(.select2-offscreen, .select2-container)', e.target).crmEntityRef();
+      $('.crm-form-autocomplete:not(.select2-offscreen, .select2-container)[data-api-entity]', e.target).each(function() {
+        $(this).crmAutocomplete($(this).data('apiEntity'), $(this).data('apiParams'), $(this).data('selectParams'));
+      });
       $('select.crm-chain-select-control', e.target).off('.chainSelect').on('change.chainSelect', chainSelect);
       $('.crm-form-text[data-crm-datepicker]', e.target).each(function() {
         $(this).crmDatepicker($(this).data('crmDatepicker'));
@@ -1633,15 +1705,18 @@ if (!CRM.vars) CRM.vars = {};
       // Handle clear button for form elements
       .on('click', 'a.crm-clear-link', function() {
         $(this).css({visibility: 'hidden'}).siblings('.crm-form-radio:checked').prop('checked', false).trigger('change', ['crmClear']);
+        $(this).siblings('.crm-multiple-checkbox-radio-options').find('.crm-form-radio:checked').prop('checked', false).trigger('change', ['crmClear']);
         $(this).siblings('input:text').val('').trigger('change', ['crmClear']);
         return false;
       })
       .on('change keyup', 'input.crm-form-radio:checked, input[allowclear=1]', function(e, context) {
         if (context !== 'crmClear' && ($(this).is(':checked') || ($(this).is('[allowclear=1]') && $(this).val()))) {
           $(this).siblings('.crm-clear-link').css({visibility: ''});
+          $(this).closest('.crm-multiple-checkbox-radio-options').siblings('.crm-clear-link').css({visibility: ''});
         }
         if (context !== 'crmClear' && $(this).is('[allowclear=1]') && $(this).val() === '') {
           $(this).siblings('.crm-clear-link').css({visibility: 'hidden'});
+          $(this).closest('.crm-multiple-checkbox-radio-options').siblings('.crm-clear-link').css({visibility: 'hidden'});
         }
       })
 
@@ -1650,16 +1725,14 @@ if (!CRM.vars) CRM.vars = {};
         e.stopPropagation();
       })
       // Handle accordions
-      .on('click.crmAccordions', '.crm-accordion-header, .crm-collapsible .collapsible-title', function (e) {
-        var action = 'open';
+      .on('click.crmAccordions', 'div.crm-accordion-header, fieldset.crm-accordion-header, .crm-collapsible .collapsible-title', function (e) {
         if ($(this).parent().hasClass('collapsed')) {
           $(this).next().css('display', 'none').slideDown(200);
         }
         else {
           $(this).next().css('display', 'block').slideUp(200);
-          action = 'close';
         }
-        $(this).parent().toggleClass('collapsed').trigger('crmAccordion:' + action);
+        $(this).parent().toggleClass('collapsed');
         e.preventDefault();
       });
 
@@ -1668,19 +1741,23 @@ if (!CRM.vars) CRM.vars = {};
 
   /**
    * Collapse or expand an accordion
+   * @deprecated
    * @param speed
    */
   $.fn.crmAccordionToggle = function (speed) {
     $(this).each(function () {
-      var action = 'open';
+      // Backward-compat, for when this older function is used on a newer <details> element
+      if ($(this).is('details')) {
+        this.open = !this.open;
+        return;
+      }
       if ($(this).hasClass('collapsed')) {
         $('.crm-accordion-body', this).first().css('display', 'none').slideDown(speed);
       }
       else {
         $('.crm-accordion-body', this).first().css('display', 'block').slideUp(speed);
-        action = 'close';
       }
-      $(this).toggleClass('collapsed').trigger('crmAccordion:' + action);
+      $(this).toggleClass('collapsed');
     });
   };
 
@@ -1860,6 +1937,26 @@ if (!CRM.vars) CRM.vars = {};
      b = parseInt(hexcolor.substr(4, 2), 16),
      yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
     return (yiq >= 128) ? 'black' : 'white';
+  };
+
+  const ALPHANUMERIC = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890';
+  CRM.utils.createRandom = function (length, charset) {
+    charset = charset || ALPHANUMERIC;
+    let result = '';
+    const chars = charset.length;
+    for (let i = 0; i < length; i++) {
+      result += charset.charAt(Math.floor(Math.random() * chars));
+    }
+    return result;
+  };
+
+  // Port of CRM_Utils_String::munge()
+  CRM.utils.munge = function (name, char = '_', len = 63) {
+    name = name.trim().replace(/[^a-zA-Z0-9]+/g, char);
+    if (!name.replace(/_/, '').length) {
+      name = CRM.utils.createRandom(len, ALPHANUMERIC);
+    }
+    return len ? name.substring(0, len) : name;
   };
 
   // CVE-2015-9251 - Prevent auto-execution of scripts when no explicit dataType was provided

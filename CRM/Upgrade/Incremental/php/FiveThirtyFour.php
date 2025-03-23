@@ -122,16 +122,16 @@ class CRM_Upgrade_Incremental_php_FiveThirtyFour extends CRM_Upgrade_Incremental
       $this->addTask('Migrate SMTP password', 'migrateSmtpPasswords');
     }
 
-    $this->addTask('core-issue#365 - Add created_date to civicrm_action_schedule', 'addColumn',
+    $this->addTask('dev/core#365 - Add created_date to civicrm_action_schedule', 'addColumn',
       'civicrm_action_schedule', 'created_date', "timestamp NULL  DEFAULT CURRENT_TIMESTAMP COMMENT 'When was the schedule reminder created.'");
 
-    $this->addTask('core-issue#365 - Add modified_date to civicrm_action_schedule', 'addColumn',
+    $this->addTask('dev/core#365 - Add modified_date to civicrm_action_schedule', 'addColumn',
       'civicrm_action_schedule', 'modified_date', "timestamp NULL  DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'When was the schedule reminder created.'");
 
-    $this->addTask('core-issue#365 - Add effective_start_date to civicrm_action_schedule', 'addColumn',
+    $this->addTask('dev/core#365 - Add effective_start_date to civicrm_action_schedule', 'addColumn',
       'civicrm_action_schedule', 'effective_start_date', "timestamp NULL COMMENT 'Earliest date to consider start events from.'");
 
-    $this->addTask('core-issue#365 - Add effective_end_date to civicrm_action_schedule', 'addColumn',
+    $this->addTask('dev/core#365 - Add effective_end_date to civicrm_action_schedule', 'addColumn',
       'civicrm_action_schedule', 'effective_end_date', "timestamp NULL COMMENT 'Latest date to consider end events from.'");
 
     $this->addTask('Set defaults and required on financial type boolean fields', 'updateFinancialTypeTable');
@@ -240,7 +240,7 @@ class CRM_Upgrade_Incremental_php_FiveThirtyFour extends CRM_Upgrade_Incremental
       MODIFY COLUMN `is_deductible` tinyint(4) DEFAULT 0 NOT NULL COMMENT 'Is this financial type tax-deductible? If true, contributions of this type may be fully OR partially deductible - non-deductible amount is stored in the Contribution record.',
       MODIFY COLUMN `is_reserved` tinyint(4) DEFAULT 0 NOT NULL COMMENT 'Is this a predefined system object?',
       MODIFY COLUMN `is_active` tinyint(4) DEFAULT 1 NOT NULL COMMENT 'Is this property active?'
-    ");
+    ", [], TRUE, NULL, FALSE, FALSE);
 
     return TRUE;
   }

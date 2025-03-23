@@ -30,6 +30,7 @@ namespace Civi\Api4\Generic;
  * @method bool getReload()
  */
 class BasicReplaceAction extends AbstractBatchAction {
+  use Traits\MatchParamTrait;
 
   /**
    * Array of $ENTITY records.
@@ -86,16 +87,25 @@ class BasicReplaceAction extends AbstractBatchAction {
       }
     }
 
-    $idField = $this->getSelect()[0];
-    $toDelete = array_diff_key(array_column($items, NULL, $idField), array_flip(array_filter(\CRM_Utils_Array::collect($idField, $this->records))));
+    // Merge in defaults and perform non-id matching if match field(s) are specified
+    foreach ($this->records as &$record) {
+      $record += $this->defaults;
+      $this->formatWriteValues($record);
+      $this->matchExisting($record);
+    }
 
+    $idField = $this->getSelect()[0];
+    $toDelete = array_diff_key(array_column($items, NULL, $idField), array_flip(array_column($this->records, $idField)));
+
+    /** @var AbstractSaveAction $saveAction */
     $saveAction = \Civi\API\Request::create($this->getEntityName(), 'save', ['version' => 4]);
-    $saveAction
+    $saveResult = $saveAction
       ->setCheckPermissions($this->getCheckPermissions())
       ->setReload($this->reload)
       ->setRecords($this->records)
-      ->setDefaults($this->defaults);
-    $result->exchangeArray((array) $saveAction->execute());
+      ->execute();
+    $result->exchangeArray((array) $saveResult);
+    $result->setCountMatched($saveResult->countMatched());
 
     if ($toDelete) {
       $result->deleted = (array) civicrm_api4($this->getEntityName(), 'delete', [

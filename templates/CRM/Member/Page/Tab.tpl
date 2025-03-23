@@ -28,7 +28,7 @@
         </div>
 
         <div class="action-link">
-          {include file="CRM/common/formButtons.tpl" location="top"}
+          {include file="CRM/common/formButtons.tpl" location="top" form=false}
         </div>
     {/if}
     {if NOT ($activeMembers or $inActiveMembers) and $action ne 2 and $action ne 1 and $action ne 8 and $action ne 4 and $action ne 32768}
@@ -45,14 +45,14 @@
         <table id="active_membership" class="display">
             <thead>
             <tr>
-                <th>{ts}Membership{/ts}</th>
-                <th>{ts}Member Since{/ts}</th>
-                <th>{ts}Start Date{/ts}</th>
-                <th>{ts}End Date{/ts}</th>
-                <th>{ts}Status{/ts}</th>
-                <th>{ts}Source{/ts}</th>
-                <th>{ts}Auto-renew{/ts}</th>
-                <th>{ts}Related{/ts}</th>
+                <th class="crm-membership">{ts}Membership{/ts}</th>
+                <th class="crm-membership-join_date">{ts}Member Since{/ts}</th>
+                <th class="crm-membership-start_date">{ts}Membership Start Date{/ts}</th>
+                <th class="crm-membership-end_date">{ts}Membership Expiration Date{/ts}</th>
+                <th class="crm-membership-status">{ts}Status{/ts}</th>
+                <th class="crm-membership-source">{ts}Membership Source{/ts}</th>
+                <th class="crm-membership-auto_renew">{ts}Auto-renew{/ts}</th>
+                <th class="crm-membership-related_count">{ts}Related{/ts}</th>
                 <th></th>
             </tr>
             </thead>
@@ -78,7 +78,7 @@
     <td>
                     {$activeMember.action|replace:'xx':$activeMember.id}
                     {if $activeMember.owner_membership_id}
-                      <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$activeMember.owner_membership_id`&action=view&context=membership&selectedChild=member"}" title="{ts}View Primary member record{/ts}" class="crm-hover-button action-item">{ts}View Primary{/ts}</a>
+                      <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$activeMember.owner_membership_id`&action=view&context=membership&selectedChild=member"}" title="{ts escape='htmlattribute'}View Primary member record{/ts}" class="crm-hover-button action-item">{ts}View Primary{/ts}</a>
                     {/if}
                 </td>
             </tr>
@@ -96,13 +96,13 @@
         <table id="pending_membership" class="display">
             <thead>
             <tr>
-                <th>{ts}Membership{/ts}</th>
-                <th>{ts}Member Since{/ts}</th>
-                <th>{ts}Start Date{/ts}</th>
-                <th>{ts}End Date{/ts}</th>
-                <th>{ts}Status{/ts}</th>
-                <th>{ts}Source{/ts}</th>
-                <th>{ts}Auto-renew{/ts}</th>
+                <th class="crm-membership">{ts}Membership{/ts}</th>
+                <th class="crm-membership-join_date">{ts}Member Since{/ts}</th>
+                <th class="crm-membership-start_date">{ts}Membership Start Date{/ts}</th>
+                <th class="crm-membership-end_date">{ts}Membership Expiration Date{/ts}</th>
+                <th class="crm-membership-status">{ts}Status{/ts}</th>
+                <th class="crm-membership-source">{ts}Membership Source{/ts}</th>
+                <th class="crm-membership-auto_renew">{ts}Auto-renew{/ts}</th>
     <th></th>
             </tr>
             </thead>
@@ -126,7 +126,7 @@
                 </td>
     <td>{$inActiveMember.action|replace:'xx':$inActiveMember.id}
     {if $inActiveMember.owner_membership_id}
-      <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$inActiveMember.owner_membership_id`&action=view&context=membership&selectedChild=member"}" title="{ts}View Primary member record{/ts}" class="crm-hover-button action-item">{ts}View Primary{/ts}
+      <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$inActiveMember.owner_membership_id`&action=view&context=membership&selectedChild=member"}" title="{ts escape='htmlattribute'}View Primary member record{/ts}" class="crm-hover-button action-item">{ts}View Primary{/ts}
       </a>
     {/if}
     </td>

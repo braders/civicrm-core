@@ -21,29 +21,6 @@
 class CRM_Admin_Page_APIExplorer extends CRM_Core_Page {
 
   /**
-   * Return unique paths for checking for examples.
-   * @return array
-   */
-  private static function uniquePaths() {
-    // Ensure that paths with trailing slashes are properly dealt with
-    $paths = explode(PATH_SEPARATOR, get_include_path());
-    foreach ($paths as $id => $rawPath) {
-      $pathParts = explode(DIRECTORY_SEPARATOR, $rawPath);
-      foreach ($pathParts as $partId => $part) {
-        if (empty($part)) {
-          unset($pathParts[$partId]);
-        }
-      }
-      $newRawPath = implode(DIRECTORY_SEPARATOR, $pathParts);
-      if ($newRawPath != $rawPath) {
-        $paths[$id] = DIRECTORY_SEPARATOR . $newRawPath;
-      }
-    }
-    $paths = array_unique($paths);
-    return $paths;
-  }
-
-  /**
    * Run page.
    *
    * @return string
@@ -56,23 +33,6 @@ class CRM_Admin_Page_APIExplorer extends CRM_Core_Page {
       ->addVars('explorer', ['max_joins' => \Civi\API\Api3SelectQuery::MAX_JOINS]);
 
     $this->assign('operators', CRM_Core_DAO::acceptedSQLOperators());
-
-    // List example directories
-    // use get_include_path to ensure that extensions are captured.
-    $examples = [];
-    $paths = self::uniquePaths();
-    foreach ($paths as $path) {
-      $dir = \CRM_Utils_File::addTrailingSlash($path) . 'api' . DIRECTORY_SEPARATOR . 'v3' . DIRECTORY_SEPARATOR . 'examples';
-      if (\CRM_Utils_File::isDir($dir)) {
-        foreach (scandir($dir) as $item) {
-          if ($item && strpos($item, '.') === FALSE && array_search($item, $examples) === FALSE) {
-            $examples[] = $item;
-          }
-        }
-      }
-    }
-    sort($examples);
-    $this->assign('examples', $examples);
 
     return parent::run();
   }
@@ -88,51 +48,13 @@ class CRM_Admin_Page_APIExplorer extends CRM_Core_Page {
   }
 
   /**
-   * AJAX callback to fetch examples.
-   */
-  public static function getExampleFile() {
-    if (!empty($_GET['entity']) && strpos($_GET['entity'], '.') === FALSE) {
-      $examples = [];
-      $paths = self::uniquePaths();
-      foreach ($paths as $path) {
-        $dir = \CRM_Utils_File::addTrailingSlash($path) . 'api' . DIRECTORY_SEPARATOR . 'v3' . DIRECTORY_SEPARATOR . 'examples' . DIRECTORY_SEPARATOR . $_GET['entity'];
-        if (\CRM_Utils_File::isDir($dir)) {
-          foreach (scandir($dir) as $item) {
-            $item = str_replace('.ex.php', '', $item);
-            if ($item && strpos($item, '.') === FALSE) {
-              $examples[] = ['key' => $item, 'value' => $item];
-            }
-          }
-        }
-      }
-      CRM_Utils_JSON::output($examples);
-    }
-    if (!empty($_GET['file']) && strpos($_GET['file'], '.') === FALSE) {
-      $paths = self::uniquePaths();
-      $fileFound = FALSE;
-      foreach ($paths as $path) {
-        $fileName = \CRM_Utils_File::addTrailingSlash($path) . 'api' . DIRECTORY_SEPARATOR . 'v3' . DIRECTORY_SEPARATOR . 'examples' . DIRECTORY_SEPARATOR . $_GET['file'] . '.ex.php';
-        if (!$fileFound && file_exists($fileName)) {
-          $fileFound = TRUE;
-          echo file_get_contents($fileName);
-        }
-      }
-      if (!$fileFound) {
-        echo "Not found.";
-      }
-      CRM_Utils_System::civiExit();
-    }
-    CRM_Utils_System::permissionDenied();
-  }
-
-  /**
    * Ajax callback to display code docs.
    */
   public static function getDoc() {
     // Verify the API handler we're talking to is valid.
     $entities = civicrm_api3('Entity', 'get');
     $entity = $_GET['entity'] ?? NULL;
-    if (!empty($entity) && in_array($entity, $entities['values']) && strpos($entity, '.') === FALSE) {
+    if (!empty($entity) && in_array($entity, $entities['values']) && !str_contains($entity, '.')) {
       $action = $_GET['action'] ?? NULL;
       $doc = self::getDocblock($entity, $action);
       $result = [
@@ -186,7 +108,7 @@ class CRM_Admin_Page_APIExplorer extends CRM_Core_Page {
         $contents = $actionFileContents;
       }
       // If action isn't in this file, try generic
-      if (strpos($contents, "function $fnName") === FALSE) {
+      if (!str_contains($contents, "function $fnName")) {
         $fnName = "civicrm_api3_generic_$action";
         $file = "api/v3/Generic/" . ucfirst($action) . '.php';
         $contents = file_get_contents($file, FILE_USE_INCLUDE_PATH);

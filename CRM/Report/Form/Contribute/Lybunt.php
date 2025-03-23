@@ -109,7 +109,7 @@ class CRM_Report_Form_Contribute_Lybunt extends CRM_Report_Form {
           'gender_id' => [
             'title' => ts('Gender'),
             'operatorType' => CRM_Report_Form::OP_MULTISELECT,
-            'options' => CRM_Core_PseudoConstant::get('CRM_Contact_DAO_Contact', 'gender_id'),
+            'options' => CRM_Contact_DAO_Contact::buildOptions('gender_id'),
           ],
           'birth_date' => [
             'title' => ts('Birth Date'),
@@ -447,7 +447,7 @@ class CRM_Report_Form_Contribute_Lybunt extends CRM_Report_Form {
    * @return string
    */
   public function getYearFilterType() {
-    return CRM_Utils_Array::value('yid_op', $this->_params, 'calendar');
+    return $this->_params['yid_op'] ?? 'calendar';
   }
 
   /**
@@ -495,7 +495,7 @@ class CRM_Report_Form_Contribute_Lybunt extends CRM_Report_Form {
     // Perhaps that works on some other report? But here it just seems odd.
     $this->countStat($statistics, count($rows));
     if (!empty($rows)) {
-      if (!empty($this->rollupRow) && !empty($this->rollupRow['civicrm_contribution_last_year_total_amount'])) {
+      if (!empty($this->rollupRow['civicrm_contribution_last_year_total_amount'])) {
         $statistics['counts']['civicrm_contribution_last_year_total_amount'] = [
           'value' => $this->rollupRow['civicrm_contribution_last_year_total_amount'],
           'title' => $this->getLastYearColumnTitle(),
@@ -503,7 +503,7 @@ class CRM_Report_Form_Contribute_Lybunt extends CRM_Report_Form {
         ];
 
       }
-      if (!empty($this->rollupRow) && !empty($this->rollupRow['civicrm_contribution_civicrm_life_time_total'])) {
+      if (!empty($this->rollupRow['civicrm_contribution_civicrm_life_time_total'])) {
         $statistics['counts']['civicrm_contribution_civicrm_life_time_total'] = [
           'value' => $this->rollupRow['civicrm_contribution_civicrm_life_time_total'],
           'title' => ts('Total LifeTime'),
@@ -644,9 +644,9 @@ class CRM_Report_Form_Contribute_Lybunt extends CRM_Report_Form {
     foreach ($rows as $key => $row) {
       // The final row contains the totals so we don't need to include it here.
       if (!empty($row['civicrm_contribution_contact_id'])) {
-        $display['life_time'] = CRM_Utils_Array::value('life_time', $display) +
+        $display['life_time'] = ($display['life_time'] ?? 0) +
           $row['civicrm_contribution_civicrm_life_time_total'];
-        $display[$previous_year] = CRM_Utils_Array::value($previous_year, $display) + $row['civicrm_contribution_last_year_total_amount'];
+        $display[$previous_year] = ($display[$previous_year] ?? 0) + $row['civicrm_contribution_last_year_total_amount'];
       }
     }
 

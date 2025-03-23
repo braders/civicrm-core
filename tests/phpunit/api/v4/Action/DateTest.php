@@ -31,7 +31,7 @@ use Civi\Test\TransactionalInterface;
  */
 class DateTest extends Api4TestBase implements TransactionalInterface {
 
-  public function testRelationshipDate() {
+  public function testRelationshipDate(): void {
     $c1 = Contact::create()
       ->addValue('first_name', 'c')
       ->addValue('last_name', 'one')
@@ -63,7 +63,7 @@ class DateTest extends Api4TestBase implements TransactionalInterface {
     $this->assertArrayNotHasKey($r, $result);
   }
 
-  public function testRelativeDateRanges() {
+  public function testRelativeDateRanges(): void {
     $c1 = Contact::create()
       ->addValue('first_name', 'c')
       ->addValue('last_name', 'one')
@@ -146,7 +146,7 @@ class DateTest extends Api4TestBase implements TransactionalInterface {
     $this->assertNotContains($act[6], $result);
   }
 
-  public function testJoinOnRelativeDate() {
+  public function testJoinOnRelativeDate(): void {
     $c1 = Contact::create(FALSE)
       ->addValue('first_name', 'Contributor')
       ->addValue('last_name', 'One')
@@ -239,6 +239,37 @@ class DateTest extends Api4TestBase implements TransactionalInterface {
       ->addWhere('id', '=', $c1)
       ->execute();
     $this->assertCount(2, $contact);
+  }
+
+  public function testHavingDateFunctions(): void {
+    $contacts = $this->saveTestRecords('Individual', [
+      'records' => 2,
+    ]);
+    $participants = $this->saveTestRecords('Participant', [
+      'records' => [
+        ['contact_id' => $contacts[0]['id'], 'register_date' => 'now - 1 year'],
+        ['contact_id' => $contacts[1]['id'], 'register_date' => 'now - 3 year'],
+        ['contact_id' => $contacts[0]['id'], 'register_date' => 'now - 4 year'],
+      ],
+    ]);
+
+    $api = Contact::get(FALSE)
+      ->addJoin('Participant AS participant', 'LEFT', ['id', '=', 'participant.contact_id'])
+      ->addGroupBy('id')
+      ->addSelect('id')
+      ->addSelect('MAX(participant.register_date) AS max_register_date');
+
+    $result = $api->setHaving([
+      ['max_register_date', '<', 'now - 2 year'],
+    ])->execute();
+    $this->assertCount(1, $result);
+    $this->assertEquals($contacts[1]['id'], $result[0]['id']);
+
+    $result = $api->setHaving([
+      ['max_register_date', '>', 'now - 2 year'],
+    ])->execute();
+    $this->assertCount(1, $result);
+    $this->assertEquals($contacts[0]['id'], $result[0]['id']);
   }
 
 }

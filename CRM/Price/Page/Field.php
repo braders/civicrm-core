@@ -59,31 +59,36 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
       self::$_actionLinks = [
         CRM_Core_Action::UPDATE => [
           'name' => ts('Edit Price Field'),
-          'url' => 'civicrm/admin/price/field',
+          'url' => 'civicrm/admin/price/field/edit',
           'qs' => 'action=update&reset=1&sid=%%sid%%&fid=%%fid%%',
           'title' => ts('Edit Price'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::UPDATE),
         ],
         CRM_Core_Action::PREVIEW => [
           'name' => ts('Preview Field'),
-          'url' => 'civicrm/admin/price/field',
+          'url' => 'civicrm/admin/price/field/edit',
           'qs' => 'action=preview&reset=1&sid=%%sid%%&fid=%%fid%%',
           'title' => ts('Preview Price'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::PREVIEW),
         ],
         CRM_Core_Action::DISABLE => [
           'name' => ts('Disable'),
           'ref' => 'crm-enable-disable',
           'title' => ts('Disable Price'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DISABLE),
         ],
         CRM_Core_Action::ENABLE => [
           'name' => ts('Enable'),
           'ref' => 'crm-enable-disable',
           'title' => ts('Enable Price'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::ENABLE),
         ],
         CRM_Core_Action::DELETE => [
           'name' => ts('Delete'),
-          'url' => 'civicrm/admin/price/field',
+          'url' => 'civicrm/admin/price/field/edit',
           'qs' => 'action=delete&reset=1&sid=%%sid%%&fid=%%fid%%',
           'title' => ts('Delete Price'),
+          'weight' => CRM_Core_Action::getWeight(CRM_Core_Action::DELETE),
         ],
       ];
     }
@@ -111,7 +116,6 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
     $taxTerm = Civi::settings()->get('tax_term');
     $getTaxDetails = FALSE;
     $taxRate = CRM_Core_PseudoConstant::getTaxRates();
-    CRM_Financial_BAO_FinancialType::getAvailableFinancialTypes($financialTypes);
     while ($priceFieldBAO->fetch()) {
       $priceField[$priceFieldBAO->id] = [];
       CRM_Core_DAO::storeValues($priceFieldBAO, $priceField[$priceFieldBAO->id]);
@@ -230,12 +234,8 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
     );
 
     if ($this->_sid) {
-      $usedByDefaults = [
-        'civicrm_event' => FALSE,
-        'civicrm_contribution_page' => FALSE,
-      ];
       $usedBy = CRM_Price_BAO_PriceSet::getUsedBy($this->_sid);
-      $this->assign('usedBy', array_intersect_key($usedByDefaults, $usedBy));
+      $this->assign('usedBy', $usedBy);
       $this->_isSetReserved = CRM_Core_DAO::getFieldValue('CRM_Price_DAO_PriceSet', $this->_sid, 'is_reserved');
       $this->assign('isReserved', $this->_isSetReserved);
 
@@ -268,9 +268,12 @@ class CRM_Price_Page_Field extends CRM_Core_Page {
       else {
         // add breadcrumb
         $url = CRM_Utils_System::url('civicrm/admin/price/field', 'reset=1');
-        CRM_Utils_System::appendBreadCrumb(ts('Price'),
-          $url
-        );
+        CRM_Utils_System::appendBreadCrumb([
+          [
+            'title' => ts('Price'),
+            'url' => $url,
+          ],
+        ]);
         $this->assign('usedPriceSetTitle', CRM_Price_BAO_PriceField::getTitle($fid));
       }
     }

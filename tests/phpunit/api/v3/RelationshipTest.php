@@ -34,8 +34,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    */
   protected $_cId_b2;
   protected $relationshipTypeID;
-  protected $_ids = [];
-  protected $_customFieldId;
   protected $_params;
 
   protected $entity;
@@ -82,27 +80,18 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    * @throws \Exception
    */
   public function tearDown(): void {
-    $this->quickCleanup(['civicrm_relationship', 'civicrm_membership'], TRUE);
+    $this->quickCleanup(['civicrm_relationship'], TRUE);
+    $this->quickCleanUpFinancialEntities();
     RelationshipType::delete(FALSE)->addWhere('id', '>', ($this->relationshipTypeID - 1))->execute();
+    CRM_Core_BAO_ConfigSetting::enableComponent('CiviMember');
     parent::tearDown();
-  }
-
-  /**
-   * Check with empty array.
-   *
-   * @param int $version
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipCreateEmpty(int $version): void {
-    $this->_apiversion = $version;
-    $this->callAPIFailure('relationship', 'create', []);
   }
 
   /**
    * Test Current Employer is correctly set.
    */
   public function testCurrentEmployerRelationship(): void {
+    CRM_Core_BAO_ConfigSetting::disableComponent('CiviMember');
     $employerRelationshipID = $this->callAPISuccessGetValue('RelationshipType', [
       'return' => 'id',
       'name_b_a' => 'Employer Of',
@@ -136,24 +125,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
     ]);
     //current employer should be removed.
     $this->assertEmpty($employeeContact['current_employer']);
-  }
-
-  /**
-   * Check if required fields are not passed.
-   *
-   * @param int $version
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipCreateWithoutRequired(int $version): void {
-    $this->_apiversion = $version;
-    $params = [
-      'start_date' => ['d' => '10', 'M' => '1', 'Y' => '2008'],
-      'end_date' => ['d' => '10', 'M' => '1', 'Y' => '2009'],
-      'is_active' => 1,
-    ];
-
-    $this->callAPIFailure('relationship', 'create', $params);
   }
 
   /**
@@ -191,38 +162,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
     //invalid date
     $params['contact_id_a'] = $this->_cId_a;
     $params['start_date'] = ['d' => '1', 'M' => '1'];
-    $this->callAPIFailure('relationship', 'create', $params);
-  }
-
-  /**
-   * Check relationship creation with invalid Relationship.
-   *
-   * @param int $version
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipCreateInvalidRelationship(int $version): void {
-    $this->_apiversion = $version;
-    // Both have the contact type Individual.
-    $params = [
-      'contact_id_a' => $this->_cId_a,
-      'contact_id_b' => $this->_cId_a,
-      'relationship_type_id' => $this->relationshipTypeID,
-      'start_date' => '2008-01-10',
-      'is_active' => 1,
-    ];
-
-    $this->callAPIFailure('relationship', 'create', $params);
-
-    // both the contact of type Organization
-    $params = [
-      'contact_id_a' => $this->_cId_b,
-      'contact_id_b' => $this->_cId_b,
-      'relationship_type_id' => $this->relationshipTypeID,
-      'start_date' => '2008-01-10',
-      'is_active' => 1,
-    ];
-
     $this->callAPIFailure('relationship', 'create', $params);
   }
 
@@ -314,42 +253,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
   }
 
   /**
-   * Check relationship creation.
-   *
-   * @param int $version
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipCreate(int $version): void {
-    $this->_apiversion = $version;
-    $params = [
-      'contact_id_a' => $this->_cId_a,
-      'contact_id_b' => $this->_cId_b,
-      'relationship_type_id' => $this->relationshipTypeID,
-      'start_date' => '2010-10-30',
-      'end_date' => '2010-12-30',
-      'is_active' => 1,
-      'note' => 'note',
-    ];
-
-    $result = $this->callAPIAndDocument('Relationship', 'create', $params, __FUNCTION__, __FILE__);
-    $relationParams = [
-      'id' => $result['id'],
-    ];
-
-    // assertDBState compares expected values in $result to actual values in the DB
-    $this->assertDBState('CRM_Contact_DAO_Relationship', $result['id'], $relationParams);
-    $result = $this->callAPISuccess('relationship', 'get', ['id' => $result['id']]);
-    $values = $result['values'][$result['id']];
-    foreach ($params as $key => $value) {
-      if ($key === 'note') {
-        continue;
-      }
-      $this->assertEquals($value, $values[$key], $key . " doesn't match " . print_r($values, TRUE));
-    }
-  }
-
-  /**
    * Ensure disabling works.
    *
    * @param int $version
@@ -413,8 +316,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
       }
       $this->assertEquals($value, $values[$key], $key . " doesn't match " . print_r($values, TRUE) . 'in line' . __LINE__);
     }
-    $params['id'] = $result['id'];
-    $this->callAPISuccess('relationship', 'delete', $params);
   }
 
   /**
@@ -477,76 +378,11 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
     $this->assertEquals($result['id'], $result['values'][$result['id']]['id']);
 
     $getParams = ['id' => $result['id']];
-    $check = $this->callAPIAndDocument($this->entity, 'get', $getParams, __FUNCTION__, __FILE__);
+    $check = $this->callAPISuccess($this->entity, 'get', $getParams);
     $this->assertEquals("custom string", $check['values'][$check['id']]['custom_' . $ids['custom_field_id']], ' in line ' . __LINE__);
 
     $this->customFieldDelete($ids['custom_field_id']);
     $this->customGroupDelete($ids['custom_group_id']);
-  }
-
-  /**
-   * Check if required fields are not passed.
-   * @param int $version
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipDeleteWithoutRequired($version): void {
-    $this->_apiversion = $version;
-    $params = [
-      'start_date' => '2008-12-20',
-      'end_date' => '2009-12-20',
-      'is_active' => 1,
-    ];
-
-    $this->callAPIFailure('relationship', 'delete', $params);
-  }
-
-  /**
-   * Check with incorrect required fields.
-   */
-  public function testRelationshipDeleteWithIncorrectData(): void {
-    $params = [
-      'contact_id_a' => $this->_cId_a,
-      'contact_id_b' => $this->_cId_b,
-      'relationship_type_id' => 'Breaking Relationship',
-    ];
-
-    $this->callAPIFailure('relationship', 'delete', $params, 'Mandatory key(s) missing from params array: id');
-
-    $params['id'] = 'Invalid';
-    $this->callAPIFailure('relationship', 'delete', $params, 'id is not a valid integer');
-  }
-
-  /**
-   * Check relationship creation.
-   * @param int $version
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipDelete($version) {
-    $this->_apiversion = $version;
-    $params = [
-      'contact_id_a' => $this->_cId_a,
-      'contact_id_b' => $this->_cId_b,
-      'relationship_type_id' => $this->relationshipTypeID,
-      'start_date' => '2008-12-20',
-      'is_active' => 1,
-    ];
-
-    $result = $this->callAPISuccess('relationship', 'create', $params);
-    $params = ['id' => $result['id']];
-    $this->callAPIAndDocument('relationship', 'delete', $params, __FUNCTION__, __FILE__);
-  }
-
-  ///////////////// civicrm_relationship_update methods
-
-  /**
-   * Check with empty array.
-   * @param int $version
-   * @dataProvider versionThreeAndFour
-   */
-  public function testRelationshipUpdateEmpty($version) {
-    $this->_apiversion = $version;
-    $this->callAPIFailure('relationship', 'create', [],
-      'contact_id_a, contact_id_b, relationship_type_id');
   }
 
   /**
@@ -665,7 +501,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    * does not.
    * FIXME: Api4
    */
-  public function testRelationshipCreateDuplicateWithCustomFields3() {
+  public function testRelationshipCreateDuplicateWithCustomFields3(): void {
     $this->createCustomGroupWithFieldsOfAllTypes();
 
     $custom_params_1 = [
@@ -695,7 +531,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
   /**
    * Check with valid params array.
    */
-  public function testRelationshipsGet() {
+  public function testRelationshipsGet(): void {
     $relParams = [
       'contact_id_a' => $this->_cId_a,
       'contact_id_b' => $this->_cId_b,
@@ -831,9 +667,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
     $rel1 = $this->callAPISuccess('relationship', 'create', $this->_params);
 
     $getParams = ['filters' => ['is_current' => 1]];
-    $description = "Demonstrates is_current filter.";
-    $subfile = 'filterIsCurrent';
-    $result = $this->callAPIAndDocument('relationship', 'get', $getParams, __FUNCTION__, __FILE__, $description, $subfile);
+    $result = $this->callAPISuccess('relationship', 'get', $getParams);
     $this->assertEquals($result['count'], 1);
     $this->AssertEquals($rel1['id'], $result['id']);
 
@@ -907,37 +741,28 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
       'relationship_type_id' => ['IN' => [$relationType2, $relationType3]],
     ];
 
-    $description = "Demonstrates use of IN filter.";
-    $subfile = 'INRelationshipType';
-
-    $result = $this->callAPIAndDocument('relationship', 'get', $getParams, __FUNCTION__, __FILE__, $description, $subfile);
+    $result = $this->callAPISuccess('relationship', 'get', $getParams);
     $this->assertEquals($result['count'], 2);
     $this->AssertEquals([$rel2['id'], $rel3['id']], array_keys($result['values']));
 
-    $description = "Demonstrates use of NOT IN filter.";
-    $subfile = 'NotInRelationshipType';
     $getParams = [
       'relationship_type_id' => ['NOT IN' => [$relationType2, $relationType3]],
     ];
-    $result = $this->callAPIAndDocument('relationship', 'get', $getParams, __FUNCTION__, __FILE__, $description, $subfile);
+    $result = $this->callAPISuccess('relationship', 'get', $getParams);
     $this->assertEquals($result['count'], 2);
     $this->assertEquals([$rel1['id'], $rel4['id']], array_keys($result['values']));
 
-    $description = 'Demonstrates use of BETWEEN filter.';
-    $subfile = 'BetweenRelationshipType';
     $getParams = [
       'relationship_type_id' => ['BETWEEN' => [$relationType2, $relationType4]],
     ];
-    $result = $this->callAPIAndDocument('relationship', 'get', $getParams, __FUNCTION__, __FILE__, $description, $subfile);
+    $result = $this->callAPISuccess('relationship', 'get', $getParams);
     $this->assertEquals($result['count'], 3);
     $this->AssertEquals([$rel2['id'], $rel3['id'], $rel4['id']], array_keys($result['values']));
 
-    $description = 'Demonstrates use of Not BETWEEN filter.';
-    $subfile = 'NotBetweenRelationshipType';
     $getParams = [
       'relationship_type_id' => ['NOT BETWEEN' => [$relationType2, $relationType4]],
     ];
-    $result = $this->callAPIAndDocument('relationship', 'get', $getParams, __FUNCTION__, __FILE__, $description, $subfile);
+    $result = $this->callAPISuccess('relationship', 'get', $getParams);
     $this->assertEquals($result['count'], 1);
     $this->assertEquals([$rel1['id']], array_keys($result['values']));
 
@@ -949,7 +774,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
   /**
    * Check with invalid relationshipType Id.
    */
-  public function testRelationshipTypeAddInvalidId() {
+  public function testRelationshipTypeAddInvalidId(): void {
     $relTypeParams = [
       'id' => 'invalid',
       'name_a_b' => 'Relation 1 for delete',
@@ -964,7 +789,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
   /**
    * Check with valid data with contact_b.
    */
-  public function testGetRelationshipWithContactB() {
+  public function testGetRelationshipWithContactB(): void {
     $relParams = [
       'contact_id_a' => $this->_cId_a,
       'contact_id_b' => $this->_cId_b,
@@ -1029,34 +854,6 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    *
    * We should get 1 result without or with correct relationship type id & 0 with
    * an incorrect one
-   * @param int $version
-   * @dataProvider versionThreeAndFour
-   */
-  public function testGetRelationshipByTypeDAO($version): void {
-    $this->_apiversion = $version;
-    $this->_ids['relationship'] = $this->callAPISuccess($this->entity, 'create', ['format.only_id' => TRUE] +
-      $this->_params);
-    $this->callAPISuccess($this->entity, 'getcount', [
-      'contact_id_a' => $this->_cId_a,
-    ], 1);
-    $result = $this->callAPISuccess($this->entity, 'get', [
-      'contact_id_a' => $this->_cId_a,
-      'relationship_type_id' => $this->relationshipTypeID,
-    ]);
-    $this->assertEquals(1, $result['count']);
-    $result = $this->callAPISuccess($this->entity, 'get', [
-      'contact_id_a' => $this->_cId_a,
-      'relationship_type_id' => 1,
-    ]);
-    $this->assertEquals(0, $result['count']);
-  }
-
-  /**
-   * Checks that passing in 'contact_id_b' + a relationship type
-   * will filter by relationship type for contact b
-   *
-   * We should get 1 result without or with correct relationship type id & 0 with
-   * an incorrect one
    *
    * @param int $version
    *
@@ -1094,7 +891,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
 
     $this->assertEquals(2, $result['count']);
     foreach ($result['values'] as $value) {
-      $this->assertContains($value['relationship_type_id'], [$this->relationshipTypeID, $relType3]);
+      $this->assertContainsEquals($value['relationship_type_id'], [$this->relationshipTypeID, $relType3]);
     }
   }
 
@@ -1105,7 +902,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    * We should get 1 result without or with correct relationship type id & 0 with
    * an incorrect one
    */
-  public function testGetRelationshipByTypeArrayReciprocal() {
+  public function testGetRelationshipByTypeArrayReciprocal(): void {
     $this->callAPISuccess($this->entity, 'create', $this->_params);
     $org3 = $this->organizationCreate();
     // lets just assume built in ones aren't being messed with!
@@ -1202,7 +999,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
     // although our contact has more than one relationship we have passed them in as contact_id_a & can't get reciprocal
     $this->assertEquals(1, $result['count']);
     foreach ($result['values'] as $key => $value) {
-      $this->assertContains($value['relationship_type_id'], [$relType1]);
+      $this->assertContainsEquals($value['relationship_type_id'], [$relType1]);
     }
   }
 
@@ -1390,7 +1187,7 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
    *
    * @throws \CRM_Core_Exception
    */
-  public function testDisableExpiredRelationships() {
+  public function testDisableExpiredRelationships(): void {
     // Step 1: Create a current employer relationship with Org A
     $params = [
       'relationship_type_id' => '5',
@@ -1452,6 +1249,23 @@ class api_v3_RelationshipTest extends CiviUnitTestCase {
         'id' => $relationshipB['id'],
         'return' => 'is_active',
       ]));
+  }
+
+  /**
+   * This is no longer guarding against the original issue, but is still a test
+   * of something. It's now mostly testing a different variation of
+   * relationship + the default in api3 being to not check permissions.
+   */
+  public function testCreateWithLesserPermissions(): void {
+    CRM_Core_Config::singleton()->userPermissionClass->permissions = [];
+    $params = [
+      'contact_id_a' => $this->_cId_a,
+      'contact_id_b' => $this->_cId_b,
+      'relationship_type_id' => $this->relationshipTypeID,
+    ];
+    $id = $this->callAPISuccess('Relationship', 'create', $params)['id'];
+    $relationship = $this->callAPISuccess('Relationship', 'getsingle', ['id' => $id]);
+    $this->assertEquals($params, array_intersect_key($relationship, $params));
   }
 
 }

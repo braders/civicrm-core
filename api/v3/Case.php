@@ -110,7 +110,7 @@ function civicrm_api3_case_create($params) {
   if (isset($params['contact_id']) && !isset($params['id'])) {
     foreach ((array) $params['contact_id'] as $cid) {
       $contactParams = ['case_id' => $caseBAO->id, 'contact_id' => $cid];
-      CRM_Case_BAO_CaseContact::create($contactParams);
+      CRM_Case_BAO_CaseContact::writeRecord($contactParams);
     }
   }
 
@@ -283,11 +283,11 @@ function civicrm_api3_case_get($params, $sql = NULL) {
 
   // Order by case contact (primary client)
   // Ex: "contact_id", "contact_id.display_name", "contact_id.sort_name DESC".
-  if (!empty($options['sort']) && strpos($options['sort'], 'contact_id') !== FALSE) {
+  if (!empty($options['sort']) && str_contains($options['sort'], 'contact_id')) {
     $sort = explode(', ', $options['sort']);
     $contactSort = NULL;
     foreach ($sort as $index => &$sortString) {
-      if (strpos($sortString, 'contact_id') === 0) {
+      if (str_starts_with($sortString, 'contact_id')) {
         $contactSort = $sortString;
         $sortString = '(1)';
         // Get sort field and direction
@@ -359,23 +359,6 @@ function civicrm_api3_case_get($params, $sql = NULL) {
   }
 
   return $cases;
-}
-
-/**
- * Deprecated API.
- *
- * Use activity API instead.
- *
- * @param array $params
- *
- * @throws CRM_Core_Exception
- * @return array
- */
-function civicrm_api3_case_activity_create($params) {
-  require_once "api/v3/Activity.php";
-  return civicrm_api3_activity_create($params) + [
-    'deprecated' => CRM_Utils_Array::value('activity_create', _civicrm_api3_case_deprecation()),
-  ];
 }
 
 /**
@@ -472,17 +455,6 @@ function _civicrm_api3_case_merge_spec(&$params) {
 }
 
 /**
- * Declare deprecated api functions.
- *
- * @deprecated api notice
- * @return array
- *   Array of deprecated actions
- */
-function _civicrm_api3_case_deprecation() {
-  return ['activity_create' => 'Case api "activity_create" action is deprecated. Use the activity api instead.'];
-}
-
-/**
  * @deprecated Update a specified case.  Use civicrm_api3_case_create() instead.
  *
  * @param array $params
@@ -571,7 +543,7 @@ function civicrm_api3_case_delete($params) {
   //check parameters
   civicrm_api3_verify_mandatory($params, NULL, ['id']);
 
-  if (CRM_Case_BAO_Case::deleteCase($params['id'], CRM_Utils_Array::value('move_to_trash', $params, FALSE))) {
+  if (CRM_Case_BAO_Case::deleteCase($params['id'], $params['move_to_trash'] ?? FALSE)) {
     return civicrm_api3_create_success($params, $params, 'Case', 'delete');
   }
   else {
@@ -649,7 +621,7 @@ function _civicrm_api3_case_read(&$cases, $options) {
   // Bulk-load activities
   if (!empty($options['return']['activities'])) {
     $query = "SELECT case_id, activity_id FROM civicrm_case_activity WHERE case_id IN (%1)";
-    $params = [1 => [implode(',', array_keys($cases)), 'String', CRM_Core_DAO::QUERY_FORMAT_NO_QUOTES]];
+    $params = [1 => [implode(',', array_keys($cases)), 'CommaSeparatedIntegers']];
     $dao = CRM_Core_DAO::executeQuery($query, $params);
     while ($dao->fetch()) {
       $cases[$dao->case_id]['activities'][] = $dao->activity_id;
@@ -658,7 +630,7 @@ function _civicrm_api3_case_read(&$cases, $options) {
   // Bulk-load tags. Supports joins onto the tag entity.
   $tagGet = ['tag_id', 'entity_id'];
   foreach (array_keys($options['return']) as $key) {
-    if (strpos($key, 'tag_id.') === 0) {
+    if (str_starts_with($key, 'tag_id.')) {
       $tagGet[] = $key;
       $options['return']['tag_id'] = 1;
     }
@@ -738,7 +710,7 @@ function civicrm_api3_case_getList($params) {
   require_once 'api/v3/Generic/Getlist.php';
   require_once 'api/v3/CaseContact.php';
   //CRM:19956 - Assign case_id param if both id and case_id is passed to retrieve the case
-  if (!empty($params['id']) && !empty($params['params']) && !empty($params['params']['case_id'])) {
+  if (!empty($params['id']) && !empty($params['params']['case_id'])) {
     $params['params']['case_id'] = ['IN' => $params['id']];
     unset($params['id']);
   }
@@ -776,4 +748,16 @@ function civicrm_api3_case_getList($params) {
 function _civicrm_api3_case_getlist_spec(&$params, $apiRequest) {
   require_once 'api/v3/Generic/Getlist.php';
   _civicrm_api3_generic_getlist_spec($params, $apiRequest);
+}
+
+function civicrm_api3_case_getoptions($params) {
+  $apiRequest = [
+    'entity' => 'Case',
+    'params' => $params,
+  ];
+  // This field is not part of this object but the api supports it
+  if ($params['field'] === 'medium_id') {
+    $apiRequest['entity'] = 'Activity';
+  }
+  return civicrm_api3_generic_getOptions($apiRequest);
 }

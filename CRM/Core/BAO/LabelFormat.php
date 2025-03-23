@@ -1,28 +1,11 @@
 <?php
 /*
  +--------------------------------------------------------------------+
- | CiviCRM version 5                                                  |
- +--------------------------------------------------------------------+
- | Copyright (C) 2011 Marty Wright                                    |
- | Licensed to CiviCRM under the Academic Free License version 3.0.   |
- +--------------------------------------------------------------------+
- | This file is a part of CiviCRM.                                    |
+ | Copyright CiviCRM LLC. All rights reserved.                        |
  |                                                                    |
- | CiviCRM is free software; you can copy, modify, and distribute it  |
- | under the terms of the GNU Affero General Public License           |
- | Version 3, 19 November 2007 and the CiviCRM Licensing Exception.   |
- |                                                                    |
- | CiviCRM is distributed in the hope that it will be useful, but     |
- | WITHOUT ANY WARRANTY; without even the implied warranty of         |
- | MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.               |
- | See the GNU Affero General Public License for more details.        |
- |                                                                    |
- | You should have received a copy of the GNU Affero General Public   |
- | License and the CiviCRM Licensing Exception along                  |
- | with this program; if not, contact CiviCRM LLC                     |
- | at info[AT]civicrm[DOT]org. If you have questions about the        |
- | GNU Affero General Public License or the licensing of CiviCRM,     |
- | see the CiviCRM license FAQ at http://civicrm.org/licensing        |
+ | This work is published under the GNU AGPLv3 license with some      |
+ | permitted exceptions and without any warranty. For full license    |
+ | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
  */
 
@@ -392,13 +375,13 @@ class CRM_Core_BAO_LabelFormat extends CRM_Core_DAO_OptionValue {
    *
    * @param null $default
    *
-   * @return value
+   * @return mixed
    */
   public static function getValue($field, &$values, $default = NULL) {
     if (array_key_exists($field, self::$optionValueFields)) {
       switch (self::$optionValueFields[$field]['type']) {
         case CRM_Utils_Type::T_INT:
-          return (int) CRM_Utils_Array::value($field, $values, $default);
+          return (int) ($values[$field] ?? $default);
 
         case CRM_Utils_Type::T_FLOAT:
           // Round float values to three decimal places and trim trailing zeros.
@@ -408,7 +391,7 @@ class CRM_Core_BAO_LabelFormat extends CRM_Core_DAO_OptionValue {
           $f = rtrim($f, '.');
           return (float) (empty($f) ? '0' : $f);
       }
-      return CRM_Utils_Array::value($field, $values, $default);
+      return $values[$field] ?? $default;
     }
     return $default;
   }
@@ -500,7 +483,7 @@ class CRM_Core_BAO_LabelFormat extends CRM_Core_DAO_OptionValue {
     }
     // copy the supplied form values to the corresponding Option Value fields in the base class
     foreach ($this->fields() as $name => $field) {
-      $this->$name = trim(CRM_Utils_Array::value($name, $values, $this->$name));
+      $this->$name = trim($values[$name] ?? $this->$name);
       if (empty($this->$name)) {
         $this->$name = 'null';
       }

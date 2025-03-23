@@ -36,20 +36,20 @@
     </div>
     {/if}
     <table class="crm-info-panel">
-      <tr><td class="label">{ts}Member{/ts}</td><td class="bold"><a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=$contact_id&context=$context"}" title="{ts}View contact summary{/ts}">{$displayName}</td></tr>
+      <tr><td class="label">{ts}Member{/ts}</td><td class="bold"><a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=$contact_id&context=$context"}" title="{ts escape='htmlattribute'}View contact summary{/ts}">{$displayName}</td></tr>
         {if $owner_display_name}
-            <tr><td class="label">{ts}By Relationship{/ts}</td><td>{$relationship}&nbsp;&nbsp;<a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=$owner_contact_id&context=$context"}" title="{ts}View primary member contact summary{/ts}">{$owner_display_name}</a>&nbsp;</td></tr>
+            <tr><td class="label">{ts}By Relationship{/ts}</td><td>{$relationship}&nbsp;&nbsp;<a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=$owner_contact_id&context=$context"}" title="{ts escape='htmlattribute'}View primary member contact summary{/ts}">{$owner_display_name}</a>&nbsp;</td></tr>
         {/if}
         <tr><td class="label">{ts}Membership Type{/ts}</td><td>{$membership_type}</td></tr>
         {if $has_related}
             <tr><td class="label">{ts}Max related{/ts}</td><td>{$max_related}</td></tr>
         {/if}
         <tr><td class="label">{ts}Status{/ts}</td><td>{$status} {if $is_override}({ts}Overridden{/ts}){/if}</td></tr>
-        <tr><td class="label">{ts}Source{/ts}</td><td>{$source}</td></tr>
+        <tr><td class="label">{ts}Membership Source{/ts}</td><td>{$source}</td></tr>
   {if $campaign}<tr><td class="label">{ts}Campaign{/ts}</td><td>{$campaign}</td></tr>{/if}
         <tr><td class="label">{ts}Member Since{/ts}</td><td>{$join_date|crmDate}</td></tr>
-        <tr><td class="label">{ts}Start date{/ts}</td><td>{$start_date|crmDate}</td></tr>
-        <tr><td class="label">{ts}End date{/ts}</td><td>{$end_date|crmDate}</td></tr>
+        <tr><td class="label">{ts}Membership Start Date{/ts}</td><td>{$start_date|crmDate}</td></tr>
+        <tr><td class="label">{ts}Membership Expiration Date{/ts}</td><td>{$end_date|crmDate}</td></tr>
         <tr><td class="label">{ts}Auto-renew{/ts}</td><td>{$auto_renew}</td></tr>
      {if $contribution_recur_id}
           <tr>
@@ -64,10 +64,10 @@
     {include file="CRM/Custom/Page/CustomDataView.tpl"}
 
     {if $accessContribution}
-      <div class="crm-accordion-wrapper">
-        <div class="crm-accordion-header">
+      <details class="crm-accordion-bold" open>
+        <summary>
           {ts}Related Contributions and Recurring Contributions{/ts}
-        </div>
+        </summary>
         <div class="crm-accordion-body">
           {if $rows.0.contribution_id}
             {include file="CRM/Contribute/Form/Selector.tpl" context="Search"}
@@ -97,14 +97,14 @@
           </script>
           <div id="membership-recurring-contributions"></div>
         </div>
-      </div>
+      </details>
     {/if}
 
     {if $softCredit}
-        <div class="crm-accordion-wrapper">
-            <div class="crm-accordion-header">{ts}Related Soft Contributions{/ts}</div>
+        <details class="crm-accordion-bold" open>
+            <summary>{ts}Related Soft Contributions{/ts}</summary>
             <div class="crm-accordion-body">{include file="CRM/Contribute/Page/ContributionSoft.tpl" context="membership"}</div>
-        </div>
+        </details>
     {/if}
 
     {if $has_related}

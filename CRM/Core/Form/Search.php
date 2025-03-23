@@ -22,13 +22,6 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
   protected $_force;
 
   /**
-   * Name of action button
-   *
-   * @var string
-   */
-  protected $_actionButtonName;
-
-  /**
    * Form values that we will be using
    *
    * @var array
@@ -97,6 +90,13 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
   protected $_reset;
 
   /**
+   * Saved Search ID retrieved from the GET vars.
+   *
+   * @var int
+   */
+  protected $_ssID;
+
+  /**
    * @return array
    */
   public function getSearchFieldMetadata() {
@@ -121,8 +121,8 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
       $this->handleForcedSearch();
     }
     $this->_formValues = $this->getFormValues();
-    // For searchResultsTasks.tpl.
-    $this->addExpectedSmartyVariables(['savedSearch', 'selectorLabel']);
+    // For searchResultsTasks.tpl & displaySearchCriteria.tpl
+    $this->addExpectedSmartyVariables(['savedSearch', 'selectorLabel', 'operator']);
   }
 
   /**
@@ -290,7 +290,7 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
    */
   protected function getEntityDefaults($entity) {
     $defaults = [];
-    foreach (CRM_Utils_Array::value($entity, $this->getSearchFieldMetadata(), []) as $fieldName => $fieldSpec) {
+    foreach (($this->getSearchFieldMetadata()[$entity] ?? []) as $fieldName => $fieldSpec) {
       if (empty($_POST[$fieldName])) {
         $value = CRM_Utils_Request::retrieveValue($fieldName, $this->getValidationTypeForField($entity, $fieldName), NULL, NULL, 'GET');
         if ($value !== NULL) {
@@ -438,9 +438,9 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
       return;
     }
 
-    $this->_group = CRM_Core_PseudoConstant::nestedGroup();
-    if ($this->_group) {
-      $this->add('select', 'group', $this->getGroupLabel(), $this->_group, FALSE,
+    $nestedGroup = CRM_Core_PseudoConstant::nestedGroup();
+    if ($nestedGroup) {
+      $this->add('select', 'group', $this->getGroupLabel(), $nestedGroup, FALSE,
         [
           'id' => 'group',
           'multiple' => 'multiple',
@@ -465,7 +465,7 @@ class CRM_Core_Form_Search extends CRM_Core_Form {
     $this->searchFieldMetadata['Contact']['contact_type'] = CRM_Contact_DAO_Contact::fields()['contact_type'];
 
     if (CRM_Core_Permission::check('access deleted contacts') && Civi::settings()->get('contact_undelete')) {
-      $this->addElement('checkbox', 'deleted_contacts', ts('Search in Trash') . '<br />' . ts('(deleted contacts)'));
+      $this->addElement('checkbox', 'deleted_contacts', ts('Search Deleted Contacts'));
       $this->searchFieldMetadata['Contact']['deleted_contacts'] = ['name' => 'deleted_contacts', 'type' => CRM_Utils_Type::T_INT, 'is_pseudofield' => TRUE, 'html' => ['type' => 'Checkbox']];
     }
 

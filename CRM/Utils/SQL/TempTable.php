@@ -92,7 +92,7 @@ class CRM_Utils_SQL_TempTable {
   public static function build() {
     $t = new CRM_Utils_SQL_TempTable();
     $t->category = NULL;
-    $t->id = md5(uniqid('', TRUE));
+    $t->id = bin2hex(random_bytes(16));
     // The constant CIVICRM_TEMP_FORCE_DURABLE is for local debugging.
     $t->durable = CRM_Utils_Constant::value('CIVICRM_TEMP_FORCE_DURABLE', FALSE);
     $t->utf8 = TRUE;
@@ -116,8 +116,8 @@ class CRM_Utils_SQL_TempTable {
   public function getName() {
     $parts = ['civicrm', 'tmp'];
     $parts[] = ($this->durable ? 'd' : 'e');
-    $parts[] = $this->category ? $this->category : 'dflt';
-    $parts[] = $this->id ? $this->id : 'dflt';
+    $parts[] = $this->category ?: 'dflt';
+    $parts[] = $this->id ?: 'dflt';
     return implode('_', $parts);
   }
 
@@ -156,7 +156,7 @@ class CRM_Utils_SQL_TempTable {
   /**
    * Create the empty table.
    *
-   * @parma string $columns
+   * @param string $columns
    *   SQL column listing.
    *   Ex: 'id int(10), name varchar(64)'.
    * @return CRM_Utils_SQL_TempTable
@@ -317,6 +317,9 @@ class CRM_Utils_SQL_TempTable {
    * @return $this
    */
   public function setMemory($value = TRUE) {
+    if (\Civi::settings()->get('disable_sql_memory_engine')) {
+      $value = FALSE;
+    }
     $this->memory = $value;
     return $this;
   }

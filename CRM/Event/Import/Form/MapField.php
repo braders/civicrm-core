@@ -21,6 +21,43 @@
 class CRM_Event_Import_Form_MapField extends CRM_Import_Form_MapField {
 
   /**
+   * Does the form layer convert field names to support QuickForm widgets.
+   *
+   * (e.g) if 'yes' we swap
+   * `soft_credit.external_identifier` to `soft_credit__external_identifier`
+   * because the contribution form would break on the . as it would treat it as
+   * javascript.
+   *
+   * In the case of the participant import the array is flatter and there
+   * is no hierarchical select so we do not need to do this.
+   *
+   * @var bool
+   */
+  protected bool $supportsDoubleUnderscoreFields = FALSE;
+
+  /**
+   * Get the name of the type to be stored in civicrm_user_job.type_id.
+   *
+   * @return string
+   */
+  public function getUserJobType(): string {
+    return 'participant_import';
+  }
+
+  /**
+   * Should contact fields be filtered which determining fields to show.
+   *
+   * This applies to Participant import as we put all contact fields in the metadata
+   * but only present those used for a match in QuickForm - the civiimport extension has
+   * more functionality to update and create.
+   *
+   * @return bool
+   */
+  protected function isFilterContactFields() : bool {
+    return TRUE;
+  }
+
+  /**
    * Set variables up before form is built.
    *
    * @return void
@@ -41,11 +78,6 @@ class CRM_Event_Import_Form_MapField extends CRM_Import_Form_MapField {
         unset($this->_mapperFields[$value]);
       }
     }
-    elseif (
-      $this->getSubmittedValue('onDuplicate') == CRM_Import_Parser::DUPLICATE_SKIP
-      || $this->getSubmittedValue('onDuplicate') == CRM_Import_Parser::DUPLICATE_NOCHECK) {
-      unset($this->_mapperFields['participant_id']);
-    }
   }
 
   /**
@@ -55,7 +87,7 @@ class CRM_Event_Import_Form_MapField extends CRM_Import_Form_MapField {
    */
   public function buildQuickForm() {
     $this->addSavedMappingFields();
-    $this->addFormRule(array('CRM_Event_Import_Form_MapField', 'formRule'), $this);
+    $this->addFormRule(['CRM_Event_Import_Form_MapField', 'formRule'], $this);
     $this->addMapper();
     $this->addFormButtons();
   }
@@ -73,52 +105,27 @@ class CRM_Event_Import_Form_MapField extends CRM_Import_Form_MapField {
    *   list of errors to be posted back to the form
    */
   public static function formRule($fields, $files, $self) {
-    $errors = [];
-    // define so we avoid notices below
-    $errors['_qf_default'] = '';
+    $requiredError = [];
 
     if (!array_key_exists('savedMapping', $fields)) {
       $importKeys = [];
-      foreach ($fields['mapper'] as $mapperPart) {
-        $importKeys[] = $mapperPart[0];
+      $importKeys = [];
+      foreach ($fields['mapper'] as $field) {
+        $importKeys[] = [$field];
       }
-      // FIXME: should use the schema titles, not redeclare them
-      $requiredFields = array(
-        'contact_id' => ts('Contact ID'),
-        'event_id' => ts('Event ID'),
-      );
+      $parser = $self->getParser();
+      $rule = $parser->getDedupeRule($self->getContactType(), $self->getUserJob()['metadata']['entity_configuration']['Contact']['dedupe_rule'] ?? NULL);
+      $requiredError = $self->validateContactFields($rule, $importKeys, ['external_identifier', 'contact_id']);
 
-      $contactFieldsBelowWeightMessage = self::validateRequiredContactMatchFields($self->getContactType(), $importKeys);
-
-      foreach ($requiredFields as $field => $title) {
-        if (!in_array($field, $importKeys)) {
-          if ($field === 'contact_id') {
-            if (!$contactFieldsBelowWeightMessage || in_array('external_identifier', $importKeys) ||
-              in_array('participant_id', $importKeys)
-            ) {
-              continue;
-            }
-            if ($self->isUpdateExisting()) {
-              $errors['_qf_default'] .= ts('Missing required field: Provide Participant ID') . '<br />';
-            }
-            else {
-              $errors['_qf_default'] .= ts('Missing required contact matching fields.') . " $contactFieldsBelowWeightMessage " . ' ' . ts('Or Provide Contact ID or External ID.') . '<br />';
-            }
-          }
-          elseif (!in_array('event_title', $importKeys)) {
-            $errors['_qf_default'] .= ts('Missing required field: Provide %1 or %2',
-                array(1 => $title, 2 => 'Event Title')
-              ) . '<br />';
-          }
-        }
+      if (!in_array('id', $fields['mapper']) && !in_array('event_id', $fields['mapper'])) {
+        // ID is the only field we need, if present.
+        $requiredError[] = ts('Missing required field: Provide %1 or %2',
+            [1 => 'Event ID', 2 => 'Event Title']
+          ) . '<br />';
       }
     }
 
-    if (empty($errors['_qf_default'])) {
-      unset($errors['_qf_default']);
-    }
-
-    return empty($errors) ? TRUE : $errors;
+    return empty($requiredError) ? TRUE : ['_qf_default' => implode('<br', $requiredError)];
   }
 
   /**

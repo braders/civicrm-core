@@ -59,7 +59,7 @@ class CiviTestSuite extends PHPUnit\Framework\TestSuite {
    *  suppress failed test error issued by phpunit when it finds.
    *  a test suite with no tests
    */
-  public function testNothing() {
+  public function testNothing(): void {
   }
 
   /**
@@ -183,7 +183,7 @@ class CiviTestSuite extends PHPUnit\Framework\TestSuite {
         foreach (array_diff($newClassNames,
           $oldClassNames
                  ) as $name) {
-          if (strpos($fileInfo->getRealPath(), strtr($name, '_\\', '//') . ".php") !== FALSE) {
+          if (str_contains($fileInfo->getRealPath(), strtr($name, '_\\', '//') . ".php")) {
             if (preg_match('/Test$/', $name)) {
               $addTestSuites[] = $name;
             }

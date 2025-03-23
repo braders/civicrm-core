@@ -88,17 +88,17 @@ class CRM_Extension_Container_Basic implements CRM_Extension_Container_Interface
    *   Local path to the container.
    * @param string $baseUrl
    *   Public URL of the container.
-   * @param CRM_Utils_Cache_Interface $cache
+   * @param CRM_Utils_Cache_Interface|null $cache
    *   Cache in which to store extension metadata.
    * @param string $cacheKey
    *   Unique name for this container.
    * @param int|null $maxDepth
    *   Maximum number of subdirectories to search.
    */
-  public function __construct($baseDir, $baseUrl, CRM_Utils_Cache_Interface $cache = NULL, $cacheKey = NULL, ?int $maxDepth = NULL) {
+  public function __construct($baseDir, $baseUrl, ?CRM_Utils_Cache_Interface $cache = NULL, $cacheKey = NULL, ?int $maxDepth = NULL) {
     $this->cache = $cache;
     $this->cacheKey = $cacheKey;
-    $this->baseDir = rtrim($baseDir, '/');
+    $this->baseDir = rtrim($baseDir, '/' . DIRECTORY_SEPARATOR);
     $this->baseUrl = rtrim($baseUrl, '/');
     $this->maxDepth = $maxDepth;
   }
@@ -214,10 +214,11 @@ class CRM_Extension_Container_Basic implements CRM_Extension_Container_Interface
             $info = CRM_Extension_Info::loadFromFile($infoPath);
           }
           catch (CRM_Extension_Exception_ParseException $e) {
-            CRM_Core_Session::setStatus(ts('Parse error in extension: %1', [
-              1 => $e->getMessage(),
+            CRM_Core_Session::setStatus(ts('Parse error in extension %1: %2', [
+              1 => ltrim($relPath, '/'),
+              2 => $e->getMessage(),
             ]), '', 'error');
-            CRM_Core_Error::debug_log_message("Parse error in extension: " . $e->getMessage());
+            CRM_Core_Error::debug_log_message("Parse error in extension " . ltrim($relPath, '/') . ": " . $e->getMessage());
             continue;
           }
           $visible = TRUE;

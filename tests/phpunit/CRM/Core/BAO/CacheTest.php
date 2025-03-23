@@ -29,7 +29,7 @@ class CRM_Core_BAO_CacheTest extends CiviUnitTestCase {
     );
   }
 
-  public function testMultiVersionDecode() {
+  public function testMultiVersionDecode(): void {
     $encoders = ['serialize', ['CRM_Core_BAO_Cache', 'encode']];
     $values = [NULL, 0, 1, TRUE, FALSE, [], ['abcd'], 'ab;cd', new stdClass()];
     foreach ($encoders as $encoder) {
@@ -76,7 +76,9 @@ class CRM_Core_BAO_CacheTest extends CiviUnitTestCase {
     // read is correct.
 
     CRM_Utils_Cache::$_singleton = NULL;
-    $this->a->values = [];
+    if (property_exists($this->a, 'values')) {
+      $this->a->values = [];
+    }
     $return_2 = $this->a->get('testSetGetItem');
     $this->assertEquals($originalValue, $return_2);
   }
@@ -90,15 +92,15 @@ class CRM_Core_BAO_CacheTest extends CiviUnitTestCase {
     // short with emoji
     $es[] = ["LF-\nTAB-\tCR-\remojiskull💀", 'LF-2d-aTAB-2d-9CR-2d-demojiskull-f0-9f-92-80'];
     // long with emoji
-    $es[] = ["LF-\nTAB-\tCR-\remojibomb💣emojiskull💀", '-5d9324e052f6e10240dce5029c5e8525'];
+    $es[] = ["LF-\nTAB-\tCR-\remojibomb💣emojiskull💀", '-LF-2d-aTAB-2d-9CR-2d-demojibomb-f0-9f-9XZMk4FL24QJA3OUCnF6FJQ'];
     // spaces are escaped
     $es[] = ['123456789 123456789 123456789 123456789 123456789 123', '123456789-20123456789-20123456789-20123456789-20123456789-20123'];
     // long but allowed
     $es[] = ['123456789_123456789_123456789_123456789_123456789_123456789_123', '123456789_123456789_123456789_123456789_123456789_123456789_123'];
     // too long, md5 fallback
-    $es[] = ['123456789_123456789_123456789_123456789_123456789_123456789_1234', '-e02b981aff954fdcc9a81c25f5ec9681'];
+    $es[] = ['123456789_123456789_123456789_123456789_123456789_123456789_1234', '-123456789_123456789_123456789_1234567894CuYGv-VT9zJqBwl9eyWgQ'];
     // too long, md5 fallback
-    $es[] = ['123456789-/23456789-+23456789--23456789_123456789_123456789', '-43b6dec1026187ae6f6a8fe4d56ab22e'];
+    $es[] = ['123456789-/23456789-+23456789--23456789_123456789_123456789', '-123456789-2d-2f23456789-2d-2b23456789-2Q7bewQJhh65vao_k1WqyLg'];
     return $es;
   }
 

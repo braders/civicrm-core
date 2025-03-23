@@ -43,7 +43,7 @@
   <tr id="optionField_{$index}" class="form-item {cycle values="odd-row,even-row"}">
         <td>
         {if $index GT 1}
-            <a onclick="showHideRow({$index}); return false;" name="optionField_{$index}" href="#" class="form-link"><i class="crm-i fa-trash" title="{ts}hide field or section{/ts}" aria-hidden="true"></i></a>
+            <a onclick="showHideRow({$index}); return false;" name="optionField_{$index}" href="#" class="form-link"><i class="crm-i fa-trash" title="{ts escape='htmlattribute'}hide field or section{/ts}" aria-hidden="true"></i></a>
         {/if}
         </td>
       <td>
@@ -118,7 +118,7 @@
             return false;
         }
 
-       var dataUrl = {/literal}"{crmURL p='civicrm/ajax/rest' h=0 q='className=CRM_Campaign_Page_AJAX&fnName=loadOptionGroupDetails' }"{literal}
+       var dataUrl = {/literal}"{crmURL p='civicrm/ajax/rest' h=0 q='className=CRM_Campaign_Page_AJAX&fnName=loadOptionGroupDetails'}"{literal}
 
       // build new options
       cj.post( dataUrl, data, function( opGroup ) {

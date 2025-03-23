@@ -22,7 +22,7 @@ class CRM_Contact_Form_Search_SearchContactTest extends CiviUnitTestCase {
    *
    * @throws \CRM_Core_Exception
    */
-  public function testContactSubtype() {
+  public function testContactSubtype(): void {
     foreach (['Contact_sub_type', 'Contact2__sub__type'] as $contactSubType) {
       $subType = $this->callAPISuccess('ContactType', 'create', [
         'name' => $contactSubType,
@@ -49,7 +49,7 @@ class CRM_Contact_Form_Search_SearchContactTest extends CiviUnitTestCase {
   protected function searchContacts($contactSubType) {
     // create contact
     $params = [
-      'first_name' => 'Peter' . substr(sha1(rand()), 0, 4),
+      'first_name' => 'Peter' . bin2hex(random_bytes(2)),
       'last_name' => 'Lastname',
       'contact_type' => 'Individual',
       'contact_sub_type' => $contactSubType,
@@ -57,7 +57,7 @@ class CRM_Contact_Form_Search_SearchContactTest extends CiviUnitTestCase {
     $contacts = $this->callAPISuccess('Contact', 'create', $params);
     $contactTypes = CRM_Contact_BAO_ContactType::getSelectElements(TRUE);
     foreach ($contactTypes as $contactType => $ignore) {
-      if (strpos($contactType, $contactSubType) !== FALSE) {
+      if (str_contains($contactType, $contactSubType)) {
         $formValues = [
           'contact_type' => $contactType,
         ];
@@ -78,7 +78,7 @@ class CRM_Contact_Form_Search_SearchContactTest extends CiviUnitTestCase {
     $expectedResult = [$contacts['id']];
     $this->checkArrayEquals($expectedResult, $contactsResult);
     // get and assert qill string
-    $qill = trim(implode($query->getOperator(), CRM_Utils_Array::value(0, $query->qill())));
+    $qill = trim(implode($query->getOperator(), $query->qill()[0]));
     $this->assertEquals("Contact Type In IndividualANDContact Subtype Like {$contactSubType}", $qill);
   }
 
@@ -88,7 +88,7 @@ class CRM_Contact_Form_Search_SearchContactTest extends CiviUnitTestCase {
    *
    * @throws \CRM_Core_Exception
    */
-  public function testContactSearchOnGroupType() {
+  public function testContactSearchOnGroupType(): void {
     $groupTypes = $this->callAPISuccess('OptionValue', 'get', [
       'return' => ['id', 'name'],
       'option_group_id' => 'group_type',

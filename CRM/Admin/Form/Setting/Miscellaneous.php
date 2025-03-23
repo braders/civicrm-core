@@ -20,49 +20,15 @@
  */
 class CRM_Admin_Form_Setting_Miscellaneous extends CRM_Admin_Form_Setting {
 
-  protected $_settings = [
-    'max_attachments' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'max_attachments_backend' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'contact_undelete' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'empoweredBy' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'logging' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'enableBackgroundQueue' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'maxFileSize' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'doNotAttachPDFReceipt' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'recordGeneratedLetters' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'secondDegRelPermissions' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'checksum_timeout' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'dompdf_font_dir' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'dompdf_chroot' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'dompdf_enable_remote' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'wkhtmltopdfPath' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'recentItemsMaxCount' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'recentItemsProviders' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'dedupe_default_limit' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'remote_profile_submissions' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'allow_alert_autodismissal' => CRM_Core_BAO_Setting::SYSTEM_PREFERENCES_NAME,
-    'prevNextBackend' => CRM_Core_BAO_Setting::SEARCH_PREFERENCES_NAME,
-  ];
-
   /**
    * Basic setup.
    */
-  public function preProcess() {
-    // check for post max size
-    CRM_Utils_Number::formatUnitSize(ini_get('post_max_size'), TRUE);
-    // This is a temp hack for the fact we really don't need to hard-code each setting in the tpl but
-    // we haven't worked through NOT doing that. These settings have been un-hardcoded.
-    $this->assign('pure_config_settings', [
-      'empoweredBy',
-      'max_attachments',
-      'max_attachments_backend',
-      'maxFileSize',
-      'secondDegRelPermissions',
-      'recentItemsMaxCount',
-      'recentItemsProviders',
-      'dedupe_default_limit',
-      'prevNextBackend',
-    ]);
+  public function preProcess(): void {
+    $maxImportFileSize = CRM_Utils_Number::formatUnitSize(ini_get('upload_max_filesize'));
+    $postMaxSize = CRM_Utils_Number::formatUnitSize(ini_get('post_max_size'));
+    if ($maxImportFileSize > $postMaxSize) {
+      CRM_Core_Session::setStatus(ts("Note: Upload max filesize ('upload_max_filesize') should not exceed Post max size ('post_max_size') as defined in PHP.ini, please check with your system administrator."), ts("Warning"), "alert");
+    }
   }
 
   /**
@@ -78,6 +44,11 @@ class CRM_Admin_Form_Setting_Miscellaneous extends CRM_Admin_Form_Setting {
     $this->addFormRule(['CRM_Admin_Form_Setting_Miscellaneous', 'formRule'], $this);
 
     parent::buildQuickForm();
+    $settingMetaData = $this->getSettingsMetaData();
+    unset($settingMetaData['logging']);
+    unset($settingMetaData['weasyprint_path']);
+    unset($settingMetaData['wkhtmltopdfPath']);
+    $this->assign('settings_fields', $settingMetaData);
     $this->addRule('checksum_timeout', ts('Value should be a positive number'), 'positiveInteger');
   }
 
@@ -98,8 +69,8 @@ class CRM_Admin_Form_Setting_Miscellaneous extends CRM_Admin_Form_Setting {
     $errors = [];
 
     // validate max file size
-    $iniBytes = CRM_Utils_Number::formatUnitSize(ini_get('upload_max_filesize'), FALSE);
-    $inputBytes = CRM_Utils_Number::formatUnitSize($fields['maxFileSize'] . 'M', FALSE);
+    $iniBytes = CRM_Utils_Number::formatUnitSize(ini_get('upload_max_filesize'));
+    $inputBytes = ((int) $fields['maxFileSize']) * 1024 * 1024;
 
     if ($inputBytes > $iniBytes) {
       $errors['maxFileSize'] = ts("Maximum file size cannot exceed limit defined in \"php.ini\" (\"upload_max_filesize=%1\").", [
@@ -112,8 +83,22 @@ class CRM_Admin_Form_Setting_Miscellaneous extends CRM_Admin_Form_Setting {
       $errors['recentItemsMaxCount'] = ts("Illegal stack size. Use values between 1 and %1.", [1 => CRM_Utils_Recent::MAX_ITEMS]);
     }
 
+    if (!empty($fields['weasyprint_path'])) {
+      // check and ensure that this path leads to the weasyprint binary
+      // and it is a valid executable binary
+      // Only check the first space separated piece to allow for a value
+      // such as /usr/bin/xvfb-run -- weasyprint (CRM-13292)
+      $pieces = explode(' ', $fields['weasyprint_path']);
+      $path = $pieces[0];
+      if (
+        !file_exists($path) ||
+        !is_executable($path)
+      ) {
+        $errors['weasyprint_path'] = ts('The path for %1 does not exist or is not valid', [1 => 'weasyprint']);
+      }
+    }
     if (!empty($fields['wkhtmltopdfPath'])) {
-      // check and ensure that thi leads to the wkhtmltopdf binary
+      // check and ensure that this path leads to the wkhtmltopdf binary
       // and it is a valid executable binary
       // Only check the first space separated piece to allow for a value
       // such as /usr/bin/xvfb-run -- wkhtmltopdf (CRM-13292)
@@ -123,7 +108,7 @@ class CRM_Admin_Form_Setting_Miscellaneous extends CRM_Admin_Form_Setting {
         !file_exists($path) ||
         !is_executable($path)
       ) {
-        $errors['wkhtmltopdfPath'] = ts('The wkhtmltodfPath does not exist or is not valid');
+        $errors['wkhtmltopdfPath'] = ts('The path for %1 does not exist or is not valid', [1 => 'wkhtmltopdf']);
       }
     }
     return $errors;

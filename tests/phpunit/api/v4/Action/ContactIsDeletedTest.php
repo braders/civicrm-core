@@ -20,6 +20,7 @@
 namespace api\v4\Action;
 
 use api\v4\Api4TestBase;
+use Civi\Test\CiviEnvBuilder;
 use Civi\Test\TransactionalInterface;
 
 /**
@@ -27,7 +28,7 @@ use Civi\Test\TransactionalInterface;
  */
 class ContactIsDeletedTest extends Api4TestBase implements TransactionalInterface {
 
-  public function setUpHeadless() {
+  public function setUpHeadless(): CiviEnvBuilder {
     $relatedTables = [
       'civicrm_address',
       'civicrm_email',
@@ -39,10 +40,18 @@ class ContactIsDeletedTest extends Api4TestBase implements TransactionalInterfac
       'civicrm_activity_contact',
     ];
     $this->cleanup(['tablesToTruncate' => $relatedTables]);
+    return parent::setUpHeadless();
+  }
+
+  protected function setUp(): void {
     $displayNameFormat = '{contact.first_name}{ }{contact.last_name}';
     \Civi::settings()->set('display_name_format', $displayNameFormat);
+    parent::setUp();
+  }
 
-    return parent::setUpHeadless();
+  public function tearDown(): void {
+    parent::tearDown();
+    \Civi::settings()->revert('display_name_format');
   }
 
   /**
@@ -50,33 +59,33 @@ class ContactIsDeletedTest extends Api4TestBase implements TransactionalInterfac
    */
   public function testIsDeletedPermission(): void {
     $contact = $this->createLoggedInUser();
+    $this->createTestRecord('Individual', ['first_name' => 'phoney']);
     \CRM_Core_Config::singleton()->userPermissionClass->permissions = ['access CiviCRM', 'view all contacts'];
     $originalQuery = civicrm_api4('Contact', 'get', [
       'checkPermissions' => TRUE,
       'select' => ['id', 'display_name', 'is_deleted'],
       'where' => [['first_name', '=', 'phoney']],
     ]);
+    $this->assertGreaterThan(0, $originalQuery->countFetched());
 
-    try {
-      $isDeletedQuery = civicrm_api4('Contact', 'get', [
-        'checkPermissions' => TRUE,
-        'select' => ['id', 'display_name'],
-        'where' => [['first_name', '=', 'phoney'], ['is_deleted', '=', 0]],
-      ]);
-      $this->assertEquals(count($originalQuery), count($isDeletedQuery));
-    }
-    catch (\CRM_Core_Exception $e) {
-      $this->fail('An Exception Should not have been raised');
-    }
-    try {
-      $isDeletedJoinTest = civicrm_api4('Email', 'get', [
-        'checkPermissions' => TRUE,
-        'where' => [['contact_id.first_name', '=', 'phoney'], ['contact_id.is_deleted', '=', 0]],
-      ]);
-    }
-    catch (\CRM_Core_Exception $e) {
-      $this->fail('An Exception Should not have been raised');
-    }
+    $isDeletedQuery = civicrm_api4('Contact', 'get', [
+      'checkPermissions' => TRUE,
+      'select' => ['id', 'display_name'],
+      'where' => [['first_name', '=', 'phoney'], ['is_deleted', '=', 0]],
+    ]);
+    $this->assertEquals(count($originalQuery), count($isDeletedQuery));
+
+    $isDeletedQuery = civicrm_api4('Individual', 'get', [
+      'checkPermissions' => TRUE,
+      'select' => ['id', 'display_name'],
+      'where' => [['first_name', '=', 'phoney'], ['is_deleted', '=', 0]],
+    ]);
+    $this->assertEquals(count($originalQuery), count($isDeletedQuery));
+
+    civicrm_api4('Email', 'get', [
+      'checkPermissions' => TRUE,
+      'where' => [['contact_id.first_name', '=', 'phoney'], ['contact_id.is_deleted', '=', 0]],
+    ]);
   }
 
 }

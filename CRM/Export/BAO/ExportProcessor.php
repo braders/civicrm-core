@@ -394,7 +394,7 @@ class CRM_Export_BAO_ExportProcessor {
    *   - addressee_other
    */
   public function __construct($exportMode, $requestedFields, $queryOperator, $isMergeSameHousehold = FALSE, $isPostalableOnly = FALSE, $isMergeSameAddress = FALSE, $formValues = []) {
-    $this->setExportMode($exportMode);
+    $this->setExportMode((int) $exportMode);
     $this->setQueryMode();
     $this->setQueryOperator($queryOperator);
     $this->setRequestedFields($requestedFields);
@@ -697,14 +697,14 @@ class CRM_Export_BAO_ExportProcessor {
   /**
    * @return int
    */
-  public function getExportMode() {
+  public function getExportMode(): int {
     return $this->exportMode;
   }
 
   /**
    * @param int $exportMode
    */
-  public function setExportMode($exportMode) {
+  public function setExportMode(int $exportMode) {
     $this->exportMode = $exportMode;
   }
 
@@ -768,7 +768,7 @@ class CRM_Export_BAO_ExportProcessor {
       return $this->getQueryFields()[$field]['title'];
     }
     elseif ($this->isExportPaymentFields() && array_key_exists($field, $this->getcomponentPaymentFields())) {
-      return CRM_Utils_Array::value($field, $this->getcomponentPaymentFields())['title'];
+      return $this->getcomponentPaymentFields()[$field]['title'];
     }
     else {
       return $field;
@@ -840,7 +840,7 @@ class CRM_Export_BAO_ExportProcessor {
       // always add contact_a.id to the ORDER clause
       // so the order is deterministic
       //CRM-15301
-      if (strpos('contact_a.id', $order) === FALSE) {
+      if (!str_contains('contact_a.id', $order)) {
         $order .= ", contact_a.id";
       }
 
@@ -977,7 +977,7 @@ class CRM_Export_BAO_ExportProcessor {
     if ($this->isHouseholdToSkip($iterationDAO->contact_id)) {
       return FALSE;
     }
-    $imProviders = CRM_Core_PseudoConstant::get('CRM_Core_DAO_IM', 'provider_id');
+    $imProviders = CRM_Core_DAO_IM::buildOptions('provider_id');
 
     $row = [];
     $householdMergeRelationshipType = $this->getHouseholdMergeTypeForRow($iterationDAO->contact_id);
@@ -1010,7 +1010,7 @@ class CRM_Export_BAO_ExportProcessor {
         if ($field == 'provider_id' || $field == 'im_provider') {
           $fieldValue = $imProviders[$fieldValue] ?? NULL;
         }
-        elseif (strstr($field, 'master_id')) {
+        elseif (str_contains($field, 'master_id')) {
           // @todo - why not just $field === 'master_id'  - what else would it be?
           $masterAddressId = $iterationDAO->$field ?? NULL;
           // get display name of contact that address is shared.
@@ -1126,11 +1126,7 @@ class CRM_Export_BAO_ExportProcessor {
 
         return CRM_Core_BAO_CustomField::displayValue($fieldValue, $cfID);
       }
-      elseif (in_array($field, [
-        'email_greeting',
-        'postal_greeting',
-        'addressee',
-      ])) {
+      elseif (in_array($field, ['email_greeting', 'postal_greeting', 'addressee'])) {
         //special case for greeting replacement
         $fldValue = "{$field}_display";
         return $iterationDAO->$fldValue;
@@ -1147,7 +1143,6 @@ class CRM_Export_BAO_ExportProcessor {
 
           case 'gender':
           case 'preferred_communication_method':
-          case 'preferred_mail_format':
           case 'communication_style':
             return $i18n->crm_translate($fieldValue);
 
@@ -1187,7 +1182,7 @@ class CRM_Export_BAO_ExportProcessor {
         'componentPaymentField_transaction_id' => 'trxn_id',
         'componentPaymentField_received_date' => 'receive_date',
       ];
-      return CRM_Utils_Array::value($payFieldMapper[$field], $paymentData, '');
+      return $paymentData[$payFieldMapper[$field]] ?? '';
     }
     else {
       // if field is empty or null
@@ -1305,7 +1300,7 @@ class CRM_Export_BAO_ExportProcessor {
     return [
       'componentPaymentField_total_amount' => ['title' => ts('Total Amount'), 'type' => CRM_Utils_Type::T_MONEY],
       'componentPaymentField_contribution_status' => ['title' => ts('Contribution Status'), 'type' => CRM_Utils_Type::T_STRING],
-      'componentPaymentField_received_date' => ['title' => ts('Date Received'), 'type' => CRM_Utils_Type::T_DATE + CRM_Utils_Type::T_TIME],
+      'componentPaymentField_received_date' => ['title' => ts('Contribution Date'), 'type' => CRM_Utils_Type::T_DATE + CRM_Utils_Type::T_TIME],
       'componentPaymentField_payment_instrument' => ['title' => ts('Payment Method'), 'type' => CRM_Utils_Type::T_STRING],
       'componentPaymentField_transaction_id' => ['title' => ts('Transaction ID'), 'type' => CRM_Utils_Type::T_STRING],
     ];
@@ -1365,11 +1360,10 @@ class CRM_Export_BAO_ExportProcessor {
    */
   public function setRelationshipReturnProperties($value, $relationshipKey) {
     $relationField = $value['name'];
-    $relIMProviderId = NULL;
     $relLocTypeId = $value['location_type_id'] ?? NULL;
     $locationName = CRM_Core_PseudoConstant::getName('CRM_Core_BAO_Address', 'location_type_id', $relLocTypeId);
-    $relPhoneTypeId = CRM_Utils_Array::value('phone_type_id', $value, ($locationName ? 'Primary' : NULL));
-    $relIMProviderId = CRM_Utils_Array::value('im_provider_id', $value, ($locationName ? 'Primary' : NULL));
+    $relPhoneTypeId = $value['phone_type_id'] ?? ($locationName ? 'Primary' : NULL);
+    $relIMProviderId = $value['im_provider_id'] ?? ($locationName ? 'Primary' : NULL);
     if (in_array($relationField, $this->getValidLocationFields()) && $locationName) {
       if ($relationField === 'phone') {
         $this->relationshipReturnProperties[$relationshipKey]['location'][$locationName]['phone-' . $relPhoneTypeId] = 1;
@@ -1454,7 +1448,7 @@ class CRM_Export_BAO_ExportProcessor {
       switch ($type) {
         case CRM_Utils_Type::T_INT:
         case CRM_Utils_Type::T_BOOLEAN:
-          if (in_array(CRM_Utils_Array::value('data_type', $fieldSpec), ['Country', 'StateProvince', 'ContactReference'])) {
+          if (in_array($fieldSpec['data_type'] ?? NULL, ['Country', 'StateProvince', 'ContactReference'])) {
             return "`$fieldName` text";
           }
           // some of those will be exported as a (localisable) string
@@ -1463,23 +1457,14 @@ class CRM_Export_BAO_ExportProcessor {
 
         case CRM_Utils_Type::T_STRING:
           if (isset($fieldSpec['maxlength'])) {
-            // A localized string for the preferred_mail_format does not fit
-            // into the varchar(8) field.
-            // @see https://lab.civicrm.org/dev/core/-/issues/2645
-            switch ($fieldName) {
-              case 'preferred_mail_format':
-                return "`$fieldName` text(16)";
-
-              default:
-                return "`$fieldName` varchar({$fieldSpec['maxlength']})";
-            }
+            return "`$fieldName` varchar({$fieldSpec['maxlength']})";
           }
           $dataType = $fieldSpec['data_type'] ?? '';
           // set the sql columns for custom data
           switch ($dataType) {
             case 'String':
               // May be option labels, which could be up to 512 characters
-              $length = max(512, CRM_Utils_Array::value('text_length', $fieldSpec));
+              $length = max(512, $fieldSpec['text_length'] ?? 0);
               return "`$fieldName` varchar($length)";
 
             case 'Memo':
@@ -1697,7 +1682,7 @@ class CRM_Export_BAO_ExportProcessor {
             foreach ($relationValue as $ltype => $val) {
               foreach (array_keys($val) as $fld) {
                 $type = explode('-', $fld);
-                $this->addOutputSpecification($type[0], $key, $ltype, CRM_Utils_Array::value(1, $type));
+                $this->addOutputSpecification($type[0], $key, $ltype, $type[1] ?? NULL);
               }
             }
           }
@@ -1714,7 +1699,7 @@ class CRM_Export_BAO_ExportProcessor {
             if (!empty($type[1])) {
               $daoFieldName .= "-" . $type[1];
             }
-            $this->addOutputSpecification($actualDBFieldName, NULL, $locationType, CRM_Utils_Array::value(1, $type));
+            $this->addOutputSpecification($actualDBFieldName, NULL, $locationType, $type[1] ?? NULL);
             $outputColumns[$daoFieldName] = TRUE;
           }
         }
@@ -1836,7 +1821,7 @@ class CRM_Export_BAO_ExportProcessor {
     $exportMode = $this->getExportMode();
     $queryMode = $this->getQueryMode();
     if (!empty($returnProperties['tags']) || !empty($returnProperties['groups']) ||
-      CRM_Utils_Array::value('notes', $returnProperties) ||
+      !empty($returnProperties['notes']) ||
       // CRM-9552
       ($queryMode & CRM_Contact_BAO_Query::MODE_CONTACTS && $query->_useGroupBy)
     ) {
@@ -2136,8 +2121,8 @@ WHERE  id IN ( $deleteIDString )
    * @throws \Exception
    */
   public function fetchRelationshipDetails($relDAO, $value, $field, &$row) {
-    $phoneTypes = CRM_Core_PseudoConstant::get('CRM_Core_DAO_Phone', 'phone_type_id');
-    $imProviders = CRM_Core_PseudoConstant::get('CRM_Core_DAO_IM', 'provider_id');
+    $phoneTypes = CRM_Core_DAO_Phone::buildOptions('phone_type_id');
+    $imProviders = CRM_Core_DAO_IM::buildOptions('provider_id');
     $i18n = CRM_Core_I18n::singleton();
     $field = $field . '_';
 
@@ -2148,11 +2133,9 @@ WHERE  id IN ( $deleteIDString )
           $fieldValue = $imProviders[$relationValue] ?? NULL;
         }
         // CRM-13995
-        elseif (is_object($relDAO) && in_array($relationField, [
-          'email_greeting',
-          'postal_greeting',
-          'addressee',
-        ])) {
+        elseif (is_object($relDAO) &&
+          in_array($relationField, ['email_greeting', 'postal_greeting', 'addressee'])
+        ) {
           //special case for greeting replacement
           $fldValue = "{$relationField}_display";
           $fieldValue = $relDAO->$fldValue;
@@ -2381,6 +2364,67 @@ LIMIT $offset, $limit
       );
     }
     return $copyPostalGreeting;
+  }
+
+  /**
+   * Get the contribution details for component export.
+   *
+   * @internal do not call from outside core.
+   *
+   * @return array
+   *   associated array
+   */
+  public function getContributionDetails() {
+    $paymentDetails = [];
+    $componentClause = ' IN ( ' . implode(',', $this->ids) . ' ) ';
+
+    if ($this->getExportMode() === CRM_Export_Form_Select::EVENT_EXPORT) {
+      $componentSelect = " civicrm_participant_payment.participant_id id";
+      $additionalClause = "
+INNER JOIN civicrm_participant_payment ON (civicrm_contribution.id = civicrm_participant_payment.contribution_id
+AND civicrm_participant_payment.participant_id {$componentClause} )
+";
+    }
+    elseif ($this->getExportMode() === CRM_Export_Form_Select::MEMBER_EXPORT) {
+      $componentSelect = " civicrm_membership_payment.membership_id id";
+      $additionalClause = "
+INNER JOIN civicrm_membership_payment ON (civicrm_contribution.id = civicrm_membership_payment.contribution_id
+AND civicrm_membership_payment.membership_id {$componentClause} )
+";
+    }
+    elseif ($this->getExportMode() === CRM_Export_Form_Select::PLEDGE_EXPORT) {
+      $componentSelect = " civicrm_pledge_payment.id id";
+      $additionalClause = "
+INNER JOIN civicrm_pledge_payment ON (civicrm_contribution.id = civicrm_pledge_payment.contribution_id
+AND civicrm_pledge_payment.pledge_id {$componentClause} )
+";
+    }
+
+    $query = " SELECT total_amount, contribution_status.name as status_id, contribution_status.label as status, payment_instrument.name as payment_instrument, receive_date,
+                          trxn_id, {$componentSelect}
+FROM civicrm_contribution
+LEFT JOIN civicrm_option_group option_group_payment_instrument ON ( option_group_payment_instrument.name = 'payment_instrument')
+LEFT JOIN civicrm_option_value payment_instrument ON (civicrm_contribution.payment_instrument_id = payment_instrument.value
+     AND option_group_payment_instrument.id = payment_instrument.option_group_id )
+LEFT JOIN civicrm_option_group option_group_contribution_status ON (option_group_contribution_status.name = 'contribution_status')
+LEFT JOIN civicrm_option_value contribution_status ON (civicrm_contribution.contribution_status_id = contribution_status.value
+                               AND option_group_contribution_status.id = contribution_status.option_group_id )
+{$additionalClause}
+";
+
+    $dao = CRM_Core_DAO::executeQuery($query);
+
+    while ($dao->fetch()) {
+      $paymentDetails[$dao->id] = [
+        'total_amount' => $dao->total_amount,
+        'contribution_status' => $dao->status,
+        'receive_date' => $dao->receive_date,
+        'pay_instru' => $dao->payment_instrument,
+        'trxn_id' => $dao->trxn_id,
+      ];
+    }
+
+    return $paymentDetails;
   }
 
 }

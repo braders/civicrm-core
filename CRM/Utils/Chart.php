@@ -178,7 +178,7 @@ class CRM_Utils_Chart {
         $graph[$key] = array_combine($dateKeys, $rows['multiValue'][$key]);
       }
       $chartData = [
-        'legend' => "$legend " . CRM_Utils_Array::value('legend', $rows, ts('Contribution')) . ' ' . ts('Summary'),
+        'legend' => "$legend " . ($rows['legend'] ?? ts('Contribution')) . ' ' . ts('Summary'),
         'values' => $graph[0],
         'multiValues' => $graph,
         'barKeys' => $rows['barKeys'] ?? [],
@@ -196,11 +196,7 @@ class CRM_Utils_Chart {
     $chartData['yname'] = $rows['yname'] ?? NULL;
 
     // carry some chart params if pass.
-    foreach ([
-      'xSize',
-      'ySize',
-      'divName',
-    ] as $f) {
+    foreach (['xSize', 'ySize', 'divName'] as $f) {
       if (!empty($rows[$f])) {
         $chartData[$f] = $rows[$f];
       }
@@ -230,17 +226,13 @@ class CRM_Utils_Chart {
     ];
 
     // rotate the x labels.
-    $chartData['xLabelAngle'] = CRM_Utils_Array::value('xLabelAngle', $chartInfo, 20);
+    $chartData['xLabelAngle'] = $chartInfo['xLabelAngle'] ?? 20;
     if (!empty($chartInfo['tip'])) {
       $chartData['tip'] = $chartInfo['tip'];
     }
 
     // carry some chart params if pass.
-    foreach ([
-      'xSize',
-      'ySize',
-      'divName',
-    ] as $f) {
+    foreach (['xSize', 'ySize', 'divName'] as $f) {
       if (!empty($rows[$f])) {
         $chartData[$f] = $rows[$f];
       }
@@ -263,10 +255,10 @@ class CRM_Utils_Chart {
 
       if ($chartObj) {
         // calculate chart size.
-        $xSize = CRM_Utils_Array::value('xSize', $params, 400);
-        $ySize = CRM_Utils_Array::value('ySize', $params, 300);
+        $xSize = $params['xSize'] ?? 400;
+        $ySize = $params['ySize'] ?? 300;
         if ($chart == 'barChart') {
-          $ySize = CRM_Utils_Array::value('ySize', $params, 250);
+          $ySize = $params['ySize'] ?? 250;
           $xSize = 60 * count($params['values']);
           // hack to show tooltip.
           if ($xSize < 200) {
@@ -278,7 +270,7 @@ class CRM_Utils_Chart {
         }
 
         // generate unique id for this chart instance
-        $uniqueId = md5(uniqid(rand(), TRUE));
+        $uniqueId = bin2hex(random_bytes(16));
 
         $theChart["chart_{$uniqueId}"]['size'] = ['xSize' => $xSize, 'ySize' => $ySize];
         $theChart["chart_{$uniqueId}"]['object'] = $chartObj;

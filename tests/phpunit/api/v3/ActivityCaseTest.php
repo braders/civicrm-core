@@ -7,10 +7,6 @@
  * @group headless
  */
 class api_v3_ActivityCaseTest extends CiviCaseTestCase {
-  protected $_params;
-  protected $_entity;
-  protected $_cid;
-
   /**
    * @var array
    *  APIv3 Result (Case.create)
@@ -30,21 +26,16 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
    * and redirect stdin to a temporary file.
    */
   public function setUp(): void {
-    $this->_entity = 'case';
-
     parent::setUp();
-
-    $this->_cid = $this->individualCreate();
-
-    $this->_case = $this->callAPISuccess('case', 'create', [
-      'case_type_id' => $this->caseTypeId,
-      'subject' => __CLASS__,
-      'contact_id' => $this->_cid,
+    $this->_case = $this->createTestEntity('Case', [
+      'case_type_id:name' => 'housing_support',
+      'subject' => 'new case',
+      'contact_id' => $this->individualCreate(),
     ]);
 
-    $this->_otherActivity = $this->callAPISuccess('Activity', 'create', [
-      'source_contact_id' => $this->_cid,
-      'activity_type_id' => 'Phone Call',
+    $this->_otherActivity = $this->createTestEntity('Activity', [
+      'source_contact_id' => $this->ids['Contact']['individual_0'],
+      'activity_type_id:name' => 'Phone Call',
       'subject' => 'Ask not what your API can do for you, but what you can do for your API.',
     ]);
   }
@@ -53,7 +44,7 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
    * Test activity creation on case based
    * on id or hash present in case subject.
    */
-  public function testActivityCreateOnCase() {
+  public function testActivityCreateOnCase(): void {
     $hash = substr(sha1(CIVICRM_SITE_KEY . $this->_case['id']), 0, 7);
     $subjectArr = [
       "[case #{$this->_case['id']}] test activity recording under case with id",
@@ -61,7 +52,7 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
     ];
     foreach ($subjectArr as $subject) {
       $activity = $this->callAPISuccess('Activity', 'create', [
-        'source_contact_id' => $this->_cid,
+        'source_contact_id' => $this->ids['Contact']['individual_0'],
         'activity_type_id' => 'Phone Call',
         'subject' => $subject,
       ]);
@@ -74,9 +65,9 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
   /**
    * Same as testActivityCreateOnCase but editing an existing non-case activity
    */
-  public function testActivityEditAddingCaseIdInSubject() {
+  public function testActivityEditAddingCaseIdInSubject(): void {
     $activity = $this->callAPISuccess('Activity', 'create', [
-      'source_contact_id' => $this->_cid,
+      'source_contact_id' => $this->ids['Contact']['individual_0'],
       'activity_type_id' => 'Meeting',
       'subject' => 'Starting as non-case activity 1',
     ]);
@@ -92,7 +83,7 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
 
     // Now same thing but just with the id not the hash
     $activity = $this->callAPISuccess('Activity', 'create', [
-      'source_contact_id' => $this->_cid,
+      'source_contact_id' => $this->ids['Contact']['individual_0'],
       'activity_type_id' => 'Meeting',
       'subject' => 'Starting as non-case activity 2',
     ]);
@@ -104,25 +95,25 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
     $this->assertEquals($this->_case['id'], $case['case_id'][0]);
   }
 
-  public function testGet() {
+  public function testGet(): void {
     $this->assertTrue(is_numeric($this->_case['id']));
     $this->assertTrue(is_numeric($this->_otherActivity['id']));
 
-    $getByCaseId = $this->callAPIAndDocument('Activity', 'get', [
+    $getByCaseId = $this->callAPISuccess('Activity', 'get', [
       'case_id' => $this->_case['id'],
-    ], __FUNCTION__, __FILE__);
+    ]);
     $this->assertNotEmpty($getByCaseId['values']);
     $getByCaseId_ids = array_keys($getByCaseId['values']);
 
-    $getByCaseNotNull = $this->callAPIAndDocument('Activity', 'get', [
+    $getByCaseNotNull = $this->callAPISuccess('Activity', 'get', [
       'case_id' => ['IS NOT NULL' => 1],
-    ], __FUNCTION__, __FILE__);
+    ]);
     $this->assertNotEmpty($getByCaseNotNull['values']);
     $getByCaseNotNull_ids = array_keys($getByCaseNotNull['values']);
 
-    $getByCaseNull = $this->callAPIAndDocument('Activity', 'get', [
+    $getByCaseNull = $this->callAPISuccess('Activity', 'get', [
       'case_id' => ['IS NULL' => 1],
-    ], __FUNCTION__, __FILE__);
+    ]);
     $this->assertNotEmpty($getByCaseNull['values']);
     $getByCaseNull_ids = array_keys($getByCaseNull['values']);
 
@@ -132,13 +123,13 @@ class api_v3_ActivityCaseTest extends CiviCaseTestCase {
     $this->assertEquals([], array_intersect($getByCaseId_ids, $getByCaseNull_ids));
   }
 
-  public function testActivityGetWithCaseInfo() {
+  public function testActivityGetWithCaseInfo(): void {
     $activities = $this->callAPISuccess('Activity', 'get', [
       'sequential' => 1,
       'case_id' => $this->_case['id'],
       'return' => ['case_id', 'case_id.subject'],
     ]);
-    $this->assertEquals(__CLASS__, $activities['values'][0]['case_id.subject']);
+    $this->assertEquals('new case', $activities['values'][0]['case_id.subject']);
     // Note - case_id is always an array
     $this->assertEquals($this->_case['id'], $activities['values'][0]['case_id'][0]);
   }

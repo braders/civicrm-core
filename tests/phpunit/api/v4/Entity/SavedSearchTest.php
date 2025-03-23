@@ -22,6 +22,7 @@ namespace api\v4\Entity;
 use api\v4\Api4TestBase;
 use Civi\Api4\Contact;
 use Civi\Api4\Email;
+use Civi\Api4\SavedSearch;
 use Civi\Test\TransactionalInterface;
 
 /**
@@ -65,7 +66,7 @@ class SavedSearchTest extends Api4TestBase implements TransactionalInterface {
     $this->assertArrayNotHasKey($in['id'], (array) $outs);
   }
 
-  public function testEmailSmartGroup() {
+  public function testEmailSmartGroup(): void {
     $in = Contact::create(FALSE)->addValue('first_name', 'yep')->execute()->first();
     $out = Contact::create(FALSE)->addValue('first_name', 'nope')->execute()->first();
     $email = uniqid() . '@' . uniqid();
@@ -100,7 +101,7 @@ class SavedSearchTest extends Api4TestBase implements TransactionalInterface {
     $this->assertArrayNotHasKey($in['id'], (array) $outs);
   }
 
-  public function testSmartGroupWithHaving() {
+  public function testSmartGroupWithHaving(): void {
     $in = Contact::create(FALSE)->addValue('first_name', 'yes')->addValue('last_name', 'siree')->execute()->first();
     $in2 = Contact::create(FALSE)->addValue('first_name', 'yessir')->addValue('last_name', 'ee')->execute()->first();
     $out = Contact::create(FALSE)->addValue('first_name', 'yess')->execute()->first();
@@ -139,7 +140,7 @@ class SavedSearchTest extends Api4TestBase implements TransactionalInterface {
     $this->assertArrayNotHasKey($in2['id'], (array) $outs);
   }
 
-  public function testMultipleSmartGroups() {
+  public function testMultipleSmartGroups(): void {
     $inGroup = $outGroup = [];
     $inName = uniqid('inGroup');
     $outName = uniqid('outGroup');
@@ -205,6 +206,28 @@ class SavedSearchTest extends Api4TestBase implements TransactionalInterface {
       ],
     ]);
     $this->assertCount(5, $aNotB);
+  }
+
+  public function testSearchTemplateGet(): void {
+    $name = uniqid();
+    $savedSearch = $this->createTestRecord('SavedSearch', [
+      'name' => $name,
+      'is_template' => TRUE,
+    ]);
+
+    // APIv4 automatically excludes is_template from normal GET
+    $getWithout = SavedSearch::get(FALSE)
+      ->setSelect(['id', 'name'])
+      ->execute()->column('name', 'id');
+    $this->assertArrayNotHasKey($savedSearch['id'], $getWithout);
+
+    // Get by name will override that exclusion rule
+    $getWith = SavedSearch::get(FALSE)
+      ->addWhere('name', '=', $name)
+      ->setSelect(['id', 'name'])
+      ->execute()->column('name', 'id');
+    $this->assertCount(1, $getWith);
+    $this->assertArrayHasKey($savedSearch['id'], $getWith);
   }
 
 }

@@ -37,22 +37,6 @@ class CRM_Member_Form_MembershipStatus extends CRM_Core_Form {
   }
 
   /**
-   * Fields for the entity to be assigned to the template.
-   *
-   * Fields may have keys
-   *  - name (required to show in tpl from the array)
-   *  - description (optional, will appear below the field)
-   *  - not-auto-addable - this class will not attempt to add the field using addField.
-   *    (this will be automatically set if the field does not have html in it's metadata
-   *    or is not a core field on the form's entity).
-   *  - help (optional) add help to the field - e.g ['id' => 'id-source', 'file' => 'CRM/Contact/Form/Contact']]
-   *  - template - use a field specific template to render this field
-   *  - required
-   * @var array
-   */
-  protected $entityFields = [];
-
-  /**
    * Set entity fields to be assigned to the form.
    */
   protected function setEntityFields() {
@@ -150,7 +134,7 @@ class CRM_Member_Form_MembershipStatus extends CRM_Core_Form {
   public function postProcess() {
     if ($this->_action & CRM_Core_Action::DELETE) {
       try {
-        CRM_Member_BAO_MembershipStatus::del($this->_id);
+        CRM_Member_BAO_MembershipStatus::deleteRecord(['id' => $this->_id]);
       }
       catch (CRM_Core_Exception $e) {
         CRM_Core_Error::statusBounce($e->getMessage(), NULL, ts('Delete Failed'));
@@ -160,10 +144,10 @@ class CRM_Member_Form_MembershipStatus extends CRM_Core_Form {
     else {
       // store the submitted values in an array
       $params = $this->exportValues();
-      $params['is_active'] = CRM_Utils_Array::value('is_active', $params, FALSE);
-      $params['is_current_member'] = CRM_Utils_Array::value('is_current_member', $params, FALSE);
-      $params['is_admin'] = CRM_Utils_Array::value('is_admin', $params, FALSE);
-      $params['is_default'] = CRM_Utils_Array::value('is_default', $params, FALSE);
+      $params['is_active'] = $params['is_active'] ?? FALSE;
+      $params['is_current_member'] = $params['is_current_member'] ?? FALSE;
+      $params['is_admin'] = $params['is_admin'] ?? FALSE;
+      $params['is_default'] = $params['is_default'] ?? FALSE;
 
       if ($this->_action & CRM_Core_Action::UPDATE) {
         $params['id'] = $this->getEntityId();

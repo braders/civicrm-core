@@ -19,23 +19,22 @@
 
 namespace api\v4\Custom;
 
+use api\v4\Api4TestBase;
 use Civi\Api4\Contact;
 use Civi\Api4\CustomField;
-use Civi\Api4\CustomGroup;
 
 /**
  * @group headless
  */
-class CustomContactRefTest extends CustomTestBase {
+class CustomContactRefTest extends Api4TestBase {
 
-  public function testGetWithJoin() {
+  public function testGetWithJoin(): void {
     $firstName = uniqid('fav');
 
-    $customGroup = CustomGroup::create(FALSE)
-      ->addValue('title', 'MyContactRef')
-      ->addValue('extends', 'Individual')
-      ->execute()
-      ->first();
+    $customGroup = $this->createTestRecord('CustomGroup', [
+      'title' => 'MyContactRef',
+      'extends' => 'Contact',
+    ]);
 
     CustomField::create(FALSE)
       ->addValue('label', 'FavPerson')
@@ -104,7 +103,7 @@ class CustomContactRefTest extends CustomTestBase {
 
     $result = Contact::get(FALSE)
       ->addSelect('id')
-      ->addWhere('MyContactRef.FavPeople.first_name', 'CONTAINS', 'First')
+      ->addWhere('MyContactRef.FavPeople.first_name', 'CONTAINS', 'FirstFav')
       ->execute()
       ->single();
 
@@ -112,20 +111,19 @@ class CustomContactRefTest extends CustomTestBase {
 
     $result = Contact::get(FALSE)
       ->addSelect('id')
-      ->addWhere('MyContactRef.FavPeople.first_name', 'CONTAINS', 'Second')
+      ->addWhere('MyContactRef.FavPeople.first_name', 'CONTAINS', 'SecondFav')
       ->execute();
 
     $this->assertCount(2, $result);
   }
 
-  public function testCurrentUser() {
+  public function testCurrentUser(): void {
     $currentUser = $this->createLoggedInUser();
 
-    $customGroup = CustomGroup::create(FALSE)
-      ->addValue('title', 'MyContactRef')
-      ->addValue('extends', 'Individual')
-      ->execute()
-      ->first();
+    $customGroup = $this->createTestRecord('CustomGroup', [
+      'title' => 'MyContactRef',
+      'extends' => 'Contact',
+    ]);
 
     CustomField::create(FALSE)
       ->addValue('label', 'FavPerson')

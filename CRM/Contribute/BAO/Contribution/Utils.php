@@ -19,6 +19,7 @@ class CRM_Contribute_BAO_Contribution_Utils {
   /**
    * Get the contribution details by month of the year.
    *
+   * @deprecated since 5.80 will be removed around 5.90
    * @param int $param
    *   Year.
    *
@@ -26,6 +27,7 @@ class CRM_Contribute_BAO_Contribution_Utils {
    *   associated array
    */
   public static function contributionChartMonthly($param) {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     if ($param) {
       $param = [1 => [$param, 'Integer']];
     }
@@ -40,7 +42,7 @@ class CRM_Contribute_BAO_Contribution_Utils {
       FROM   civicrm_contribution AS contrib
 INNER JOIN   civicrm_contact AS contact ON ( contact.id = contrib.contact_id )
      WHERE   contrib.contact_id = contact.id
-       AND   ( contrib.is_test = 0 OR contrib.is_test IS NULL )
+       AND   contrib.is_test = 0
        AND   contrib.contribution_status_id = 1
        AND   date_format(contrib.receive_date,'%Y') = %1
        AND   contact.is_deleted = 0
@@ -63,8 +65,11 @@ INNER JOIN   civicrm_contact AS contact ON ( contact.id = contrib.contact_id )
    *
    * @return array|null
    *   associated array
+   *
+   * @deprecated since 5.80 will be removed around 5.90
    */
   public static function contributionChartYearly() {
+    CRM_Core_Error::deprecatedFunctionWarning('no alternative');
     $config = CRM_Core_Config::singleton();
     $yearClause = "year(contrib.receive_date) as contribYear";
     if (!empty($config->fiscalYearStart) && ($config->fiscalYearStart['M'] != 1 || $config->fiscalYearStart['d'] != 1)) {
@@ -83,7 +88,7 @@ INNER JOIN   civicrm_contact AS contact ON ( contact.id = contrib.contact_id )
              {$yearClause}
       FROM   civicrm_contribution AS contrib
 INNER JOIN   civicrm_contact contact ON ( contact.id = contrib.contact_id )
-     WHERE   ( contrib.is_test = 0 OR contrib.is_test IS NULL )
+     WHERE   contrib.is_test = 0
        AND   contrib.contribution_status_id = 1
        AND   contact.is_deleted = 0
   GROUP BY   contribYear
@@ -335,7 +340,7 @@ LIMIT 1
    */
   public static function overrideDefaultCurrency($params) {
     $config = CRM_Core_Config::singleton();
-    $config->defaultCurrency = CRM_Utils_Array::value('currency', $params, $config->defaultCurrency);
+    $config->defaultCurrency = $params['currency'] ?? $config->defaultCurrency;
   }
 
   /**

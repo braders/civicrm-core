@@ -19,15 +19,66 @@
  * Class CRM_Contact_Form_Merge.
  */
 class CRM_Contact_Form_Merge extends CRM_Core_Form {
-  // The id of the contact that there's a duplicate for; this one will
+
   /**
+   * Rule group ID
+   *
+   * @var int
+   */
+  public $_rgid;
+
+  /**
+   * Group ID
+   *
+   * @var int
+   */
+  public $_gid;
+
+  /**
+   * @var int
+   */
+  public $_mergeId;
+
+  /**
+   * The URL to view the "next" mergeable contact
+   *
+   * @var string|null
+   */
+  public $next = NULL;
+
+  /**
+   * The URL to view the "previous" mergeable contact
+   *
+   * @var string|null
+   */
+  public $prev = NULL;
+
+  /**
+   * Details about the main contact, required for the merge handler and UI.
+   *
+   * @var array
+   */
+  protected $_mainDetails;
+
+  /**
+   * Details about the other contact, required for the merge handler and UI.
+   *
+   * @var array
+   */
+  protected $_otherDetails;
+
+
+  /**
+   * The id of the contact that there's a duplicate for; this one will
    * possibly inherit some of $_oid's properties and remain in the system.
+   *
    * @var int
    */
   public $_cid = NULL;
 
   /**
    * The id of the other contact - the duplicate one that will get deleted.
+   *
    * @var int
    */
   public $_oid = NULL;
@@ -35,9 +86,11 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
   public $_contactType = NULL;
 
   /**
-   * @var array
+   * JSON encoded string
+   *
+   * @var string
    */
-  public $criteria = [];
+  public $criteria;
 
   /**
    * Query limit to be retained in the urls.
@@ -104,11 +157,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
       }
 
       $cacheKey = CRM_Dedupe_Merger::getMergeCacheKeyString($this->_rgid, $gid, json_decode($this->criteria, TRUE), TRUE, $this->limit);
-
-      $join = CRM_Dedupe_Merger::getJoinOnDedupeTable();
-      $where = "de.id IS NULL";
-
-      $pos = CRM_Core_BAO_PrevNextCache::getPositions($cacheKey, $this->_cid, $this->_oid, $this->_mergeId, $join, $where, $flip);
+      $pos = CRM_Core_BAO_PrevNextCache::getPositions($cacheKey, $flip ? $this->_oid : $this->_cid, $flip ? $this->_cid : $this->_oid, $this->_mergeId);
 
       // get user info of main contact.
       $config = CRM_Core_Config::singleton();
@@ -161,15 +210,15 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
       $cmsUser = $mainUfId && $otherUfId;
       $this->assign('user', $cmsUser);
 
-      $rowsElementsAndInfo = CRM_Dedupe_Merger::getRowsElementsAndInfo($this->_cid, $this->_oid);
+      $rowsElementsAndInfo = CRM_Dedupe_Merger::getRowsElementsAndInfo((int) $this->_cid, (int) $this->_oid);
       $main = $this->_mainDetails = $rowsElementsAndInfo['main_details'];
       $other = $this->_otherDetails = $rowsElementsAndInfo['other_details'];
 
       $this->assign('contact_type', $main['contact_type']);
       $this->assign('main_name', $main['display_name']);
       $this->assign('other_name', $other['display_name']);
-      $this->assign('main_cid', $main['contact_id']);
-      $this->assign('other_cid', $other['contact_id']);
+      $this->assign('main_cid', $main['id']);
+      $this->assign('other_cid', $other['id']);
       $this->assign('rgid', $this->_rgid);
       $this->assignSummaryRowsToTemplate($contacts);
 
@@ -177,11 +226,11 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
 
       $this->assign('mainLocBlock', json_encode($rowsElementsAndInfo['main_details']['location_blocks']));
       $this->assign('locationBlockInfo', json_encode(CRM_Dedupe_Merger::getLocationBlockInfo()));
-      $this->assign('mainContactTypeIcon', CRM_Contact_BAO_Contact_Utils::getImage($contacts[$this->_cid]['contact_sub_type'] ? $contacts[$this->_cid]['contact_sub_type'] : $contacts[$this->_cid]['contact_type'],
+      $this->assign('mainContactTypeIcon', CRM_Contact_BAO_Contact_Utils::getImage($contacts[$this->_cid]['contact_sub_type'] ?: $contacts[$this->_cid]['contact_type'],
         FALSE,
         $this->_cid
       ));
-      $this->assign('otherContactTypeIcon', CRM_Contact_BAO_Contact_Utils::getImage($contacts[$this->_oid]['contact_sub_type'] ? $contacts[$this->_oid]['contact_sub_type'] : $contacts[$this->_oid]['contact_type'],
+      $this->assign('otherContactTypeIcon', CRM_Contact_BAO_Contact_Utils::getImage($contacts[$this->_oid]['contact_sub_type'] ?: $contacts[$this->_oid]['contact_type'],
         FALSE,
         $this->_oid
       ));
@@ -200,6 +249,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
           'main' => NULL,
           'other' => NULL,
           'location_entity' => NULL,
+          'location_block_index' => NULL,
         ];
       }
       $this->assign('rows', $assignedRows);
@@ -211,7 +261,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
         // on the form.
         if (substr($element[1], 0, 13) === 'move_location') {
           $element[4] = array_merge(
-            (array) CRM_Utils_Array::value(4, $element, []),
+            (array) ($element[4] ?? []),
             [
               'data-location' => substr($element[1], 14),
               'data-is_location' => TRUE,
@@ -220,7 +270,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
         if (substr($element[1], 0, 15) === 'location_blocks') {
           // @todo We could add some data elements here to make jquery manipulation more straight-forward
           // @todo consider enabling if it is an add & defaulting to true.
-          $element[4] = array_merge((array) CRM_Utils_Array::value(4, $element, []), ['disabled' => TRUE]);
+          $element[4] = array_merge((array) ($element[4] ?? []), ['disabled' => TRUE]);
         }
         $newCheckBox = $this->addElement($element[0],
           $element[1],
@@ -311,7 +361,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
     $formValues['other_details'] = $this->_otherDetails;
 
     // Check if any rel_tables checkboxes have been de-selected
-    $rowsElementsAndInfo = CRM_Dedupe_Merger::getRowsElementsAndInfo($this->_cid, $this->_oid);
+    $rowsElementsAndInfo = CRM_Dedupe_Merger::getRowsElementsAndInfo((int) $this->_cid, (int) $this->_oid);
     // If rel_tables is not set then initialise with 0 value, required for the check which calls removeContactBelongings in moveAllBelongings
     foreach (array_keys($rowsElementsAndInfo['rel_tables']) as $relTableElement) {
       if (!array_key_exists($relTableElement, $formValues)) {
@@ -338,10 +388,7 @@ class CRM_Contact_Form_Merge extends CRM_Core_Form {
     elseif ($this->next && $this->_mergeId && empty($formValues['_qf_Merge_done'])) {
       $cacheKey = CRM_Dedupe_Merger::getMergeCacheKeyString($this->_rgid, $this->_gid, json_decode($this->criteria, TRUE), TRUE, $this->limit);
 
-      $join = CRM_Dedupe_Merger::getJoinOnDedupeTable();
-      $where = "de.id IS NULL";
-
-      $pos = CRM_Core_BAO_PrevNextCache::getPositions($cacheKey, NULL, NULL, $this->_mergeId, $join, $where);
+      $pos = CRM_Core_BAO_PrevNextCache::getPositions($cacheKey, NULL, NULL, $this->_mergeId);
 
       if (!empty($pos) &&
         $pos['next']['id1'] &&

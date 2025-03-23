@@ -5,7 +5,8 @@
     bindings: {
       field: '<',
       'op': '<',
-      'optionKey': '<'
+      'optionKey': '<',
+      labelId: '@',
     },
     require: {ngModel: 'ngModel'},
     template: '<div class="form-group" ng-include="$ctrl.getTemplate()"></div>',
@@ -125,7 +126,7 @@
       this.getTemplate = function() {
         var field = ctrl.field || {};
 
-        if (_.includes(['LIKE', 'NOT LIKE', 'REGEXP', 'NOT REGEXP'], ctrl.op)) {
+        if (_.includes(['LIKE', 'NOT LIKE', 'REGEXP', 'NOT REGEXP', 'REGEXP BINARY', 'NOT REGEXP BINARY'], ctrl.op)) {
           return '~/crmSearchTasks/crmSearchInput/text.html';
         }
 
@@ -158,6 +159,10 @@
 
         if (field.data_type === 'Float') {
           return '~/crmSearchTasks/crmSearchInput/float.html';
+        }
+
+        if (field.input_type === 'Email') {
+          return '~/crmSearchTasks/crmSearchInput/email.html';
         }
 
         return '~/crmSearchTasks/crmSearchInput/text.html';

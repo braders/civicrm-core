@@ -21,7 +21,7 @@
 class CRM_Campaign_Form_Task_Release extends CRM_Campaign_Form_Task {
 
   /**
-   * Survet id
+   * Survey id
    *
    * @var int
    */
@@ -47,16 +47,12 @@ class CRM_Campaign_Form_Task_Release extends CRM_Campaign_Form_Task {
    * Build all the data structures needed to build the form.
    */
   public function preProcess() {
-    $this->_interviewToRelease = $this->get('interviewToRelease');
-    if ($this->_interviewToRelease) {
+    $interviewToRelease = $this->get('interviewToRelease');
+    if ($interviewToRelease) {
       //user came from interview form.
-      foreach ([
-        'surveyId',
-        'contactIds',
-        'interviewerId',
-      ] as $fld) {
-        $this->{"_$fld"} = $this->get($fld);
-      }
+      $this->_surveyId = $this->get('surveyId');
+      $this->_contactIds = $this->get('contactIds');
+      $this->_interviewerId = $this->get('interviewerId');
 
       if (!empty($this->_contactIds)) {
         $this->assign('totalSelectedContacts', count($this->_contactIds));
@@ -65,8 +61,8 @@ class CRM_Campaign_Form_Task_Release extends CRM_Campaign_Form_Task {
     else {
       parent::preProcess();
       //get the survey id from user submitted values.
-      $this->_surveyId = CRM_Utils_Array::value('campaign_survey_id', $this->get('formValues'));
-      $this->_interviewerId = CRM_Utils_Array::value('survey_interviewer_id', $this->get('formValues'));
+      $this->_surveyId = $this->get('formValues')['campaign_survey_id'] ?? NULL;
+      $this->_interviewerId = $this->get('formValues')['survey_interviewer_id'] ?? NULL;
     }
 
     if (!$this->_surveyId) {

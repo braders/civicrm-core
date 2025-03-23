@@ -14,7 +14,7 @@ class SequenceListenerTest extends \CiviCaseTestCase {
     $this->_params = [
       'case_type' => $this->caseType,
       'subject' => 'Test case',
-      'contact_id' => 17,
+      'contact_id' => $this->individualCreate([], 'case_subject'),
     ];
     //Add an activity status with Type = Completed
     $this->callAPISuccess('OptionValue', 'create', [
@@ -24,14 +24,14 @@ class SequenceListenerTest extends \CiviCaseTestCase {
     ]);
   }
 
-  public function testSequence() {
+  public function testSequence(): void {
     $actStatuses = array_flip(\CRM_Activity_BAO_Activity::buildOptions('status_id', 'validate'));
     $caseStatuses = array_flip(\CRM_Case_PseudoConstant::caseStatus('name'));
     $actTypes = array_flip(\CRM_Activity_BAO_Activity::buildOptions('activity_type_id', 'create'));
 
     // Create case; schedule first activity
     \CRM_Utils_Time::setTime('2013-11-30 01:00:00');
-    $case = $this->callAPISuccess('case', 'create', $this->_params);
+    $case = $this->callAPISuccess('Case', 'create', $this->_params);
     $analyzer = new \Civi\CCase\Analyzer($case['id']);
     $this->assertEquals($caseStatuses['Open'], self::ag($analyzer->getCase(), 'status_id'));
     $this->assertApproxTime('2013-11-30 01:00:00', self::ag($analyzer->getSingleActivity('Medical evaluation'), 'activity_date_time'));

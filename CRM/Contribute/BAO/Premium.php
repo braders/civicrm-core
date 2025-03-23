@@ -37,17 +37,13 @@ class CRM_Contribute_BAO_Premium extends CRM_Contribute_DAO_Premium {
   }
 
   /**
-   * Update the is_active flag in the db.
-   *
+   * @deprecated - this bypasses hooks.
    * @param int $id
-   *   Id of the database record.
    * @param bool $is_active
-   *   Value we want to set the is_active field.
-   *
    * @return bool
-   *   true if we found and updated the object, else false
    */
   public static function setIsActive($id, $is_active) {
+    CRM_Core_Error::deprecatedFunctionWarning('writeRecord');
     return CRM_Core_DAO::setFieldValue('CRM_Contribute_DAO_Premium', $id, 'premiums_active ', $is_active);
   }
 
@@ -59,81 +55,19 @@ class CRM_Contribute_BAO_Premium extends CRM_Contribute_DAO_Premium {
    * @deprecated
    */
   public static function del($premiumID) {
+    CRM_Core_Error::deprecatedFunctionWarning('deleteRecord');
     return static::deleteRecord(['id' => $premiumID]);
   }
 
   /**
-   * Build Premium Block im Contribution Pages.
+   * Whitelist of possible values for the entity_table field
    *
-   * @param CRM_Core_Form $form
-   * @param int $pageID
-   * @param bool $formItems
-   * @param int $selectedProductID
-   * @param string $selectedOption
+   * @return array
    */
-  public static function buildPremiumBlock(&$form, $pageID, $formItems = FALSE, $selectedProductID = NULL, $selectedOption = NULL) {
-    $form->add('hidden', "selectProduct", $selectedProductID, ['id' => 'selectProduct']);
-
-    $premiumDao = new CRM_Contribute_DAO_Premium();
-    $premiumDao->entity_table = 'civicrm_contribution_page';
-    $premiumDao->entity_id = $pageID;
-    $premiumDao->premiums_active = 1;
-
-    if ($premiumDao->find(TRUE)) {
-      $premiumID = $premiumDao->id;
-      $premiumBlock = [];
-      CRM_Core_DAO::storeValues($premiumDao, $premiumBlock);
-
-      CRM_Financial_BAO_FinancialType::getAvailableFinancialTypes($financialTypes, CRM_Core_Action::ADD);
-      $addWhere = "financial_type_id IN (0)";
-      if (!empty($financialTypes)) {
-        $addWhere = "financial_type_id IN (" . implode(',', array_keys($financialTypes)) . ")";
-      }
-      $addWhere = "{$addWhere} OR financial_type_id IS NULL";
-
-      $premiumsProductDao = new CRM_Contribute_DAO_PremiumsProduct();
-      $premiumsProductDao->premiums_id = $premiumID;
-      $premiumsProductDao->whereAdd($addWhere);
-      $premiumsProductDao->orderBy('weight');
-      $premiumsProductDao->find();
-
-      $products = [];
-      while ($premiumsProductDao->fetch()) {
-        $productDAO = new CRM_Contribute_DAO_Product();
-        $productDAO->id = $premiumsProductDao->product_id;
-        $productDAO->is_active = 1;
-        if ($productDAO->find(TRUE)) {
-          if ($selectedProductID != NULL) {
-            if ($selectedProductID == $productDAO->id) {
-              if ($selectedOption) {
-                $productDAO->options = ts('Selected Option') . ': ' . $selectedOption;
-              }
-              else {
-                $productDAO->options = NULL;
-              }
-              CRM_Core_DAO::storeValues($productDAO, $products[$productDAO->id]);
-            }
-          }
-          else {
-            CRM_Core_DAO::storeValues($productDAO, $products[$productDAO->id]);
-          }
-        }
-        $options = $temp = [];
-        $temp = explode(',', $productDAO->options);
-        foreach ($temp as $value) {
-          $options[trim($value)] = trim($value);
-        }
-        if ($temp[0] != '') {
-          $form->addElement('select', 'options_' . $productDAO->id, NULL, $options);
-        }
-      }
-      if (count($products)) {
-        $form->assign('showPremium', $formItems);
-        $form->assign('showSelectOptions', $formItems);
-        $form->assign('products', $products);
-        $form->assign('premiumBlock', $premiumBlock);
-      }
-    }
+  public static function entityTables(): array {
+    return [
+      'civicrm_contribution_page' => ts('Contribution Page'),
+    ];
   }
 
   /**
@@ -232,6 +166,16 @@ class CRM_Contribute_BAO_Premium extends CRM_Contribute_DAO_Premium {
       self::$productInfo = [$products, $options];
     }
     return self::$productInfo;
+  }
+
+  /**
+   * Convert key=val options into an array while keeping
+   * compatibility for values only.
+   *
+   * @deprecated
+   */
+  public static function parseProductOptions($string) : array {
+    return CRM_Utils_CommaKV::unserialize($string);
   }
 
 }

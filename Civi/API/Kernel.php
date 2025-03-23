@@ -34,9 +34,7 @@ class Kernel {
 
   /**
    * @param \Civi\Core\CiviEventDispatcherInterface $dispatcher
-   *   The event dispatcher which receives kernel events.
-   * @param array $apiProviders
-   *   Array of ProviderInterface.
+   * @param \Civi\API\Provider\ProviderInterface[] $apiProviders
    */
   public function __construct($dispatcher, $apiProviders = []) {
     $this->apiProviders = $apiProviders;
@@ -82,10 +80,6 @@ class Kernel {
       return $this->formatResult($apiRequest, $apiResponse);
     }
     catch (\Exception $e) {
-      if ($apiRequest) {
-        $this->dispatcher->dispatch('civi.api.exception', new ExceptionEvent($e, NULL, $apiRequest, $this));
-      }
-
       if ($e instanceof \CRM_Core_Exception) {
         $err = $this->formatApiException($e, $apiRequest);
       }
@@ -141,23 +135,31 @@ class Kernel {
    * @throws \Civi\API\Exception\UnauthorizedException
    */
   public function runRequest($apiRequest) {
-    $this->boot($apiRequest);
-
-    [$apiProvider, $apiRequest] = $this->resolve($apiRequest);
-
     try {
-      $this->authorize($apiProvider, $apiRequest);
+      $this->boot($apiRequest);
+
+      [$apiProvider, $apiRequest] = $this->resolve($apiRequest);
+
+      try {
+        $this->authorize($apiProvider, $apiRequest);
+      }
+      catch (\Civi\API\Exception\UnauthorizedException $e) {
+        // We catch and re-throw to log for visibility
+        \CRM_Core_Error::backtrace('API Request Authorization failed', TRUE);
+        throw $e;
+      }
+
+      [$apiProvider, $apiRequest] = $this->prepare($apiProvider, $apiRequest);
+      $result = $apiProvider->invoke($apiRequest);
+
+      return $this->respond($apiProvider, $apiRequest, $result);
     }
-    catch (\Civi\API\Exception\UnauthorizedException $e) {
-      // We catch and re-throw to log for visibility
-      \CRM_Core_Error::backtrace('API Request Authorization failed', TRUE);
+    catch (\Exception $e) {
+      if ($apiRequest) {
+        $this->dispatcher->dispatch('civi.api.exception', new ExceptionEvent($e, NULL, $apiRequest, $this));
+      }
       throw $e;
     }
-
-    [$apiProvider, $apiRequest] = $this->prepare($apiProvider, $apiRequest);
-    $result = $apiProvider->invoke($apiRequest);
-
-    return $this->respond($apiProvider, $apiRequest, $result);
   }
 
   /**
@@ -229,7 +231,7 @@ class Kernel {
     /** @var \Civi\API\Event\AuthorizeEvent $event */
     $event = $this->dispatcher->dispatch('civi.api.authorize', new AuthorizeEvent($apiProvider, $apiRequest, $this, \CRM_Core_Session::getLoggedInContactID() ?: 0));
     if (!$event->isAuthorized()) {
-      throw new \Civi\API\Exception\UnauthorizedException("Authorization failed");
+      throw new \Civi\API\Exception\UnauthorizedException("Authorization failed: CiviCRM APIv{$apiRequest['version']} ({$apiRequest['entity']}::{$apiRequest['action']})");
     }
   }
 
@@ -271,14 +273,12 @@ class Kernel {
   /**
    * @param int $version
    *   API version.
-   * @return array
-   *   Array<string>.
+   * @return string[]
    */
   public function getEntityNames($version) {
     // Question: Would it better to eliminate $this->apiProviders and just use $this->dispatcher?
     $entityNames = [];
     foreach ($this->getApiProviders() as $provider) {
-      /** @var \Civi\API\Provider\ProviderInterface $provider */
       $entityNames = array_merge($entityNames, $provider->getEntityNames($version));
     }
     $entityNames = array_unique($entityNames);
@@ -291,14 +291,12 @@ class Kernel {
    *   API version.
    * @param string $entity
    *   API entity.
-   * @return array
-   *   Array<string>
+   * @return string[]
    */
   public function getActionNames($version, $entity) {
     // Question: Would it better to eliminate $this->apiProviders and just use $this->dispatcher?
     $actionNames = [];
     foreach ($this->getApiProviders() as $provider) {
-      /** @var \Civi\API\Provider\ProviderInterface $provider */
       $actionNames = array_merge($actionNames, $provider->getActionNames($version, $entity));
     }
     $actionNames = array_unique($actionNames);
@@ -321,7 +319,7 @@ class Kernel {
     if (!empty($apiRequest['params']['debug'])) {
       $data['trace'] = $e->getTraceAsString();
     }
-    return $this->createError($e->getMessage(), $data, $apiRequest, $e->getCode());
+    return $this->createError($e->getMessage(), $data, $apiRequest);
   }
 
   /**
@@ -336,17 +334,22 @@ class Kernel {
    */
   public function formatApiException($e, $apiRequest) {
     $data = $e->getExtraParams();
+    if (($data['exception'] ?? NULL) instanceof \DB_Error) {
+      $data['sql'] = $e->getSQL();
+      $data['debug_info'] = $e->getUserInfo();
+    }
+    unset($data['exception']);
     $data['entity'] = $apiRequest['entity'] ?? NULL;
     $data['action'] = $apiRequest['action'] ?? NULL;
 
-    if (\CRM_Utils_Array::value('debug', \CRM_Utils_Array::value('params', $apiRequest))
+    if (!empty($apiRequest['params']['debug'])
       // prevent recursion
       && empty($data['trace'])
     ) {
       $data['trace'] = $e->getTraceAsString();
     }
 
-    return $this->createError($e->getMessage(), $data, $apiRequest, $e->getCode());
+    return $this->createError($e->getMessage(), $data, $apiRequest);
   }
 
   /**
@@ -390,15 +393,11 @@ class Kernel {
    *   Error data.
    * @param array $apiRequest
    *   The full description of the API request.
-   * @param mixed $code
-   *   Doesn't appear to be used.
    *
    * @throws \CRM_Core_Exception
    * @return array
-   *   Array<type>.
    */
-  public function createError($msg, $data, $apiRequest, $code = NULL) {
-    // FIXME what to do with $code?
+  public function createError($msg, $data, $apiRequest) {
     if ($msg === 'DB Error: constraint violation' || substr($msg, 0, 9) == 'DB Error:' || $msg == 'DB Error: already exists') {
       try {
         $fields = _civicrm_api3_api_getfields($apiRequest);
@@ -409,6 +408,7 @@ class Kernel {
       }
     }
 
+    require_once "api/v3/utils.php";
     $data = \civicrm_api3_create_error($msg, $data);
 
     if (isset($apiRequest['params']) && is_array($apiRequest['params']) && !empty($apiRequest['params']['api.has_parent'])) {
@@ -441,15 +441,14 @@ class Kernel {
   }
 
   /**
-   * @return array<ProviderInterface>
+   * @return \Civi\API\Provider\ProviderInterface[]
    */
   public function getApiProviders() {
     return $this->apiProviders;
   }
 
   /**
-   * @param array $apiProviders
-   *   Array<ProviderInterface>.
+   * @param \Civi\API\Provider\ProviderInterface[] $apiProviders
    * @return Kernel
    */
   public function setApiProviders($apiProviders) {

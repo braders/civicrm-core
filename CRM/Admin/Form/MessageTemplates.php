@@ -42,6 +42,20 @@ class CRM_Admin_Form_MessageTemplates extends CRM_Core_Form {
   public $submitOnce = TRUE;
 
   /**
+   * The ID of the message template being edited
+   *
+   * @var int
+   */
+  protected $_id;
+
+  /**
+   * The (current) message template database values
+   *
+   * @var array
+   */
+  protected $_values;
+
+  /**
    * PreProcess form - load existing values.
    *
    * @throws \CRM_Core_Exception
@@ -175,11 +189,11 @@ class CRM_Admin_Form_MessageTemplates extends CRM_Core_Form {
 
     $this->assign('tokens', CRM_Utils_Token::formatTokensForDisplay($tokens));
 
-    // if not a system message use a wysiwyg editor, CRM-5971
-    if ($this->_id &&
-      CRM_Core_DAO::getFieldValue('CRM_Core_DAO_MessageTemplate',
-        $this->_id,
-        'workflow_id'
+    // if not a system message use a wysiwyg editor, CRM-5971 and dev/core#5154
+    if (
+      $this->_id && (
+        CRM_Core_DAO::getFieldValue('CRM_Core_DAO_MessageTemplate', $this->_id, 'workflow_id') ||
+        CRM_Core_DAO::getFieldValue('CRM_Core_DAO_MessageTemplate', $this->_id, 'workflow_name')
       )
     ) {
       $this->add('textarea', 'msg_html', ts('HTML Message'),
@@ -207,7 +221,7 @@ class CRM_Admin_Form_MessageTemplates extends CRM_Core_Form {
       ] + CRM_Core_BAO_PdfFormat::getList(TRUE), FALSE
     );
 
-    $this->add('checkbox', 'is_active', ts('Enabled?'));
+    $this->add('advcheckbox', 'is_active', ts('Enabled?'));
     $this->addFormRule([__CLASS__, 'formRule'], $this);
 
     if ($this->_action & CRM_Core_Action::VIEW) {
@@ -272,7 +286,8 @@ class CRM_Admin_Form_MessageTemplates extends CRM_Core_Form {
    */
   public function postProcess() {
     if ($this->_action & CRM_Core_Action::DELETE) {
-      CRM_Core_BAO_MessageTemplate::del($this->_id);
+      CRM_Core_BAO_MessageTemplate::deleteRecord(['id' => $this->_id]);
+      CRM_Core_Session::setStatus(ts('Selected message template has been deleted.'), ts('Deleted'), 'success');
 
       $this->postProcessHook();
     }
@@ -331,6 +346,14 @@ class CRM_Admin_Form_MessageTemplates extends CRM_Core_Form {
       }
       CRM_Utils_System::redirect(CRM_Utils_System::url('civicrm/admin/messageTemplates', 'selectedChild=user&reset=1'));
     }
+  }
+
+  /**
+   * Override
+   * @return array
+   */
+  protected function getFieldsToExcludeFromPurification(): array {
+    return ['msg_html'];
   }
 
 }

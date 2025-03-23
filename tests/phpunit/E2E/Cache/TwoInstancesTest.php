@@ -44,7 +44,7 @@ class E2E_Cache_TwoInstancesTest extends CiviEndToEndTestCase {
   /**
    * Get a list of cache-creation specs.
    */
-  public function getSingleGenerators() {
+  public static function getSingleGenerators() {
     $exs = [];
     $exs[] = [
       ['type' => ['SqlGroup'], 'name' => 'TwoInstancesTest_SameSQL'],
@@ -81,7 +81,7 @@ class E2E_Cache_TwoInstancesTest extends CiviEndToEndTestCase {
   /**
    * Get a list of distinct cache-creation specs.
    */
-  public function getTwoGenerators() {
+  public static function getTwoGenerators() {
     $exs = [];
     $exs[] = [
       ['type' => ['SqlGroup'], 'name' => 'testTwo_a'],
@@ -176,7 +176,7 @@ class E2E_Cache_TwoInstancesTest extends CiviEndToEndTestCase {
 
     $a = $this->a = CRM_Utils_Cache::create($cacheA);
     $b = $this->b = CRM_Utils_Cache::create($cacheB);
-    return array($a, $b);
+    return [$a, $b];
   }
 
 }

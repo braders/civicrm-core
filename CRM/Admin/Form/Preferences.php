@@ -26,6 +26,13 @@ class CRM_Admin_Form_Preferences extends CRM_Core_Form {
   protected $_contactID = NULL;
   public $_action = NULL;
 
+  /**
+   * This should only be populated programmatically via the settings metadata.
+   *
+   * @var array
+   */
+  protected $_settings = [];
+
   protected $_params = NULL;
 
   /**
@@ -83,6 +90,7 @@ class CRM_Admin_Form_Preferences extends CRM_Core_Form {
    */
   public function buildQuickForm() {
     parent::buildQuickForm();
+    $this->assign('entityInClassFormat', 'setting');
 
     $this->addButtons([
       [

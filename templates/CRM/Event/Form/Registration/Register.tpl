@@ -7,17 +7,15 @@
  | and copyright information, see https://civicrm.org/licensing       |
  +--------------------------------------------------------------------+
 *}
-{if call_user_func(array('CRM_Core_Permission','check'), 'administer CiviCRM') }
+{crmPermission has='administer CiviCRM'}
   {capture assign="buttonTitle"}{ts}Configure Event{/ts}{/capture}
   {crmButton target="_blank" p="civicrm/event/manage/settings" q="reset=1&action=update&id=`$event.id`" fb=1 title="$buttonTitle" icon="fa-wrench"}{ts}Configure{/ts}{/crmButton}
   <div class='clear'></div>
-{/if}
+{/crmPermission}
 {* Callback snippet: Load payment processor *}
   {if $action & 1024}
     {include file="CRM/Event/Form/Registration/PreviewHeader.tpl"}
   {/if}
-
-  {include file="CRM/common/TrackingFields.tpl"}
 
   <div class="crm-event-id-{$event.id} crm-block crm-event-register-form-block">
 
@@ -38,19 +36,19 @@
       <div class="messages status no-popup crm-not-you-message" id="crm-event-register-different">
         {ts 1=$display_name}Welcome %1{/ts}. (<a
           href="{crmURL p='civicrm/event/register' q="cid=0&reset=1&id=`$event.id`"}"
-          title="{ts}Click here to register a different person for this event.{/ts}">{ts 1=$display_name}Not %1, or want to register a different person{/ts}</a>?)
+          title="{ts escape='htmlattribute'}Click here to register a different person for this event.{/ts}">{ts 1=$display_name}Not %1, or want to register a different person{/ts}</a>?)
       </div>
     {/if}
     {/crmRegion}
 
-    {if $event.intro_text}
+    {if array_key_exists('intro_text', $event)}
       <div id="intro_text" class="crm-public-form-item crm-section intro_text-section">
         <p>{$event.intro_text}</p>
       </div>
     {/if}
 
     {include file="CRM/common/cidzero.tpl"}
-    {if $pcpSupporterText}
+    {if $pcp AND $pcpSupporterText}
       <div class="crm-public-form-item crm-section pcpSupporterText-section">
         <div class="content">{$pcpSupporterText}</div>
       </div>
@@ -58,9 +56,9 @@
 
     {if !empty($form.additional_participants.html)}
       <div class="crm-public-form-item crm-section additional_participants-section" id="noOfparticipants">
-        <div class="label">{$form.additional_participants.label} <span class="crm-marker" title="{ts}This field is required.{/ts}">*</span></div>
+        <div class="label">{$form.additional_participants.label} <span class="crm-marker" title="{ts escape='htmlattribute'}This field is required.{/ts}">*</span></div>
         <div class="content">
-          {$form.additional_participants.html}{if $contact_id}&nbsp;{ts}(including yourself){/ts}{/if}
+          {$form.additional_participants.html}{ts}(including yourself){/ts}
           <br/>
           <div class="description" id="additionalParticipantsDescription" style="display: none;">{ts}Fill in your registration information on this page. You will be able to enter the registration information for additional people after you complete this page and click &quot;Continue&quot;.{/ts}</div>
         </div>
@@ -75,17 +73,17 @@
 
     <div class="crm-public-form-item crm-section custom_pre-section">
       {* Display "Top of page" profile immediately after the introductory text *}
-      {include file="CRM/UF/Form/Block.tpl" fields=$customPre}
+      {include file="CRM/UF/Form/Block.tpl" fields=$customPre prefix=false hideFieldset=false}
     </div>
 
-    {if $priceSet}
-      {if ! $quickConfig}<fieldset id="priceset" class="crm-public-form-item crm-group priceset-group">
+    {if !$suppressPaymentBlock}
+      {if !$quickConfig}<fieldset id="priceset" class="crm-public-form-item crm-group priceset-group">
         <legend>{$event.fee_label}</legend>{/if}
-      {include file="CRM/Price/Form/PriceSet.tpl" extends="Event"}
+      {include file="CRM/Price/Form/PriceSet.tpl" extends="Event" hideTotal=$quickConfig}
       {include file="CRM/Price/Form/ParticipantCount.tpl"}
       {if ! $quickConfig}</fieldset>{/if}
     {/if}
-    {if $pcp && $is_honor_roll }
+    {if $pcp && $is_honor_roll}
       <fieldset class="crm-public-form-item crm-group pcp-group">
         <div class="crm-public-form-item crm-section pcp-section">
           <div class="crm-public-form-item crm-section display_in_roll-section">
@@ -132,19 +130,21 @@
       </fieldset>
     {/if}
 
-    {if $priceSet}
+    {if !$suppressPaymentBlock && !$showPaymentOnConfirm}
       {include file='CRM/Core/BillingBlockWrapper.tpl'}
     {/if}
 
     <div class="crm-public-form-item crm-section custom_post-section">
-      {include file="CRM/UF/Form/Block.tpl" fields=$customPost}
+      {foreach from=$postPageProfiles item=customPost}
+        {include file="CRM/UF/Form/Block.tpl" fields=$customPost prefix=false hideFieldset=false}
+      {/foreach}
     </div>
 
     <div id="crm-submit-buttons" class="crm-submit-buttons">
       {include file="CRM/common/formButtons.tpl" location="bottom"}
     </div>
 
-    {if $event.footer_text}
+    {if array_key_exists('footer_text', $event)}
       <div id="footer_text" class="crm-public-form-item crm-section event_footer_text-section">
         <p>{$event.footer_text}</p>
       </div>
@@ -164,12 +164,13 @@
     });
 
   {/literal}
-  {if $pcp && $is_honor_roll }
+  {if $pcp && $is_honor_roll}
     pcpAnonymous();
   {/if}
   {literal}
 
   CRM.$(function($) {
+    toggleAdditionalParticipants();
     $('#additional_participants').change(function() {
       toggleAdditionalParticipants();
       allowParticipant();
@@ -177,14 +178,18 @@
 
     function toggleAdditionalParticipants() {
       var submit_button = $("#crm-submit-buttons > button").html();
-      var review_translated = '{/literal}{ts escape="js"}Review{/ts}{literal}';
+      {/literal}{if $event.is_monetary || $event.is_confirm_enabled}{literal}
+        var next_translated = '{/literal}{ts escape="js"}Review{/ts}{literal}';
+      {/literal}{else}{literal}
+        var next_translated = '{/literal}{ts escape="js"}Register{/ts}{literal}';
+      {/literal}{/if}{literal}
       var continue_translated = '{/literal}{ts escape="js"}Continue{/ts}{literal}';
       if ($('#additional_participants').val()) {
         $("#additionalParticipantsDescription").show();
-        $("#crm-submit-buttons > button").html(submit_button.replace(review_translated, continue_translated));
+        $("#crm-submit-buttons > button").html(submit_button.replace(next_translated, continue_translated));
       } else {
         $("#additionalParticipantsDescription").hide();
-        $("#crm-submit-buttons > button").html(submit_button.replace(continue_translated, review_translated));
+        $("#crm-submit-buttons > button").html(submit_button.replace(continue_translated, next_translated));
       }
     }
   });
@@ -257,7 +262,7 @@
   }
 
   {/literal}
-  {if $pcp && $is_honor_roll }{literal}
+  {if $pcp && $is_honor_roll}{literal}
   function pcpAnonymous() {
     // clear nickname field if anonymous is true
     if (document.getElementsByName("pcp_is_anonymous")[1].checked) {

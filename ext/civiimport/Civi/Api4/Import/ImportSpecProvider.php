@@ -19,6 +19,7 @@ use Civi\Api4\UserJob;
 use Civi\BAO\Import;
 use Civi\Core\Service\AutoService;
 use CRM_Core_BAO_UserJob;
+use CRM_Civiimport_ExtensionUtil as E;
 
 /**
  * @service
@@ -32,14 +33,46 @@ class ImportSpecProvider extends AutoService implements SpecProviderInterface {
    */
   public function modifySpec(RequestSpec $spec): void {
     $tableName = $spec->getEntityTableName();
-    $columns = Import::getFieldsForTable($tableName);
-    $action = $spec->getAction();
-    // CheckPermissions does not reach us here - so we will have to rely on earlier permission filters.
-    $userJobID = substr($spec->getEntity(), (strpos($spec->getEntity(), '_') + 1));
-    $userJob = UserJob::get(FALSE)->addWhere('id', '=', $userJobID)->addSelect('metadata', 'job_type', 'created_id')->execute()->first();
+    try {
+      $columns = Import::getFieldsForTable($tableName);
+    }
+    catch (\CRM_Core_Exception $e) {
+      // The api metadata may retain the expectation that this entity exists after the
+      // table is deleted - & hence we get an error.
+      return;
+    }
+    // Common fields
+    $field = new FieldSpec('_id', $spec->getEntity(), 'Int');
+    $field->setTitle(E::ts('Import row ID'));
+    $field->setType('Field');
+    $field->setInputType('Number');
+    $field->setReadonly(TRUE);
+    $field->setNullable(FALSE);
+    $field->setColumnName('_id');
+    $spec->addFieldSpec($field);
 
+    $field = new FieldSpec('_status', $spec->getEntity(), 'String');
+    $field->setTitle(E::ts('Import row status'));
+    $field->setType('Field');
+    $field->setInputType('Text');
+    $field->setReadonly(TRUE);
+    $field->setRequired(TRUE);
+    $field->setNullable(FALSE);
+    $field->setColumnName('_status');
+    $spec->addFieldSpec($field);
+
+    $field = new FieldSpec('_status_message', $spec->getEntity(), 'String');
+    $field->setTitle(E::ts('Import row message'));
+    $field->setType('Field');
+    $field->setInputType('Text');
+    $field->setReadonly(TRUE);
+    $field->setNullable(TRUE);
+    $field->setColumnName('_status_message');
+    $spec->addFieldSpec($field);
+
+    $userJobType = $this->getJobType($spec);
     foreach ($columns as $column) {
-      $isInternalField = strpos($column['name'], '_') === 0;
+      $isInternalField = str_starts_with($column['name'], '_');
       $exists = $isInternalField && $spec->getFieldByName($column['name']);
       if ($exists) {
         continue;
@@ -48,17 +81,14 @@ class ImportSpecProvider extends AutoService implements SpecProviderInterface {
       $field->setTitle(ts('Import field') . ':' . $column['label']);
       $field->setLabel($column['label']);
       $field->setType('Field');
+      $field->setDataType($column['data_type']);
       $field->setReadonly($isInternalField);
       $field->setDescription(ts('Data being imported into the field.'));
       $field->setColumnName($column['name']);
       if ($column['name'] === '_entity_id') {
-        $jobTypes = CRM_Core_BAO_UserJob::getTypes();
-        foreach ($jobTypes as $jobType) {
-          if ($userJob['job_type'] === $jobType['id'] && $jobType['entity']) {
-            $field->setFkEntity($jobType['entity']);
-            $field->setInputType('EntityRef');
-          }
-        }
+        $field->setFkEntity($userJobType['entity']);
+        $field->setInputType('EntityRef');
+        $field->setInputAttrs(['label' => $userJobType['entity']]);
       }
       $spec->addFieldSpec($field);
     }
@@ -69,7 +99,26 @@ class ImportSpecProvider extends AutoService implements SpecProviderInterface {
    * @inheritDoc
    */
   public function applies($entity, $action): bool {
-    return strpos($entity, 'Import_') === 0;
+    return str_starts_with($entity, 'Import_');
+  }
+
+  /**
+   * Get the user job type detail.
+   *
+   * @param \Civi\Api4\Service\Spec\RequestSpec $spec
+   *
+   * @return array
+   * @throws \CRM_Core_Exception
+   */
+  public function getJobType(RequestSpec $spec): array {
+    // CheckPermissions does not reach us here - so we will have to rely on earlier permission filters.
+    [, $userJobID] = explode('_', $spec->getEntity(), 2);
+    $userJob = UserJob::get(FALSE)
+      ->addWhere('id', '=', $userJobID)
+      ->addSelect('metadata', 'job_type', 'created_id')
+      ->execute()
+      ->first();
+    return CRM_Core_BAO_UserJob::getType($userJob['job_type']);
   }
 
 }

@@ -31,9 +31,9 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
 
   /**
    * What event type are we browsing?
-   * @var sting
+   * @var string
    */
-  private $_event;
+  private $_event_type;
 
   /**
    * Should we only count distinct contacts?
@@ -165,7 +165,7 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
           break;
 
         case 'opened':
-          $dateSort = CRM_Mailing_Event_BAO_MailingEventOpened::getTableName() . '.time_stamp';
+          $dateSort = 'civicrm_mailing_event_opened.time_stamp';
           break;
 
         case 'bounce':
@@ -177,18 +177,6 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
               ],
               [
                 'name' => ts('Bounce Reason'),
-              ],
-            ]
-          );
-          break;
-
-        case 'forward':
-          $dateSort = CRM_Mailing_Event_BAO_MailingEventForward::getTableName() . '.time_stamp';
-
-          $this->_columnHeaders = array_merge($this->_columnHeaders,
-            [
-              [
-                'name' => ts('Forwarded Email'),
               ],
             ]
           );
@@ -217,7 +205,7 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
           break;
 
         case 'click':
-          $dateSort = CRM_Mailing_Event_BAO_MailingEventClickThrough::getTableName() . '.time_stamp';
+          $dateSort = CRM_Mailing_Event_BAO_MailingEventTrackableURLOpen::getTableName() . '.time_stamp';
           $this->_columnHeaders = array_merge($this->_columnHeaders, [
             [
               'name' => ts('URL'),
@@ -281,14 +269,6 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
         );
         return $result;
 
-      case 'forward':
-        $event = new CRM_Mailing_Event_BAO_MailingEventForward();
-        $result = $event->getTotalCount($this->_mailing_id,
-          $this->_job_id,
-          $this->_is_distinct
-        );
-        return $result;
-
       case 'reply':
         $event = new CRM_Mailing_Event_BAO_MailingEventReply();
         $result = $event->getTotalCount($this->_mailing_id,
@@ -315,7 +295,7 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
         return $result;
 
       case 'click':
-        $event = new CRM_Mailing_Event_BAO_MailingEventClickThrough();
+        $event = new CRM_Mailing_Event_BAO_MailingEventTrackableURLOpen();
         $result = $event->getTotalCount($this->_mailing_id,
           $this->_job_id,
           $this->_is_distinct,
@@ -374,13 +354,6 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
         );
         return $rows;
 
-      case 'forward':
-        $rows = CRM_Mailing_Event_BAO_MailingEventForward::getRows($this->_mailing_id,
-          $this->_job_id, $this->_is_distinct,
-          $offset, $rowCount, $sort
-        );
-        return $rows;
-
       case 'reply':
         $rows = CRM_Mailing_Event_BAO_MailingEventReply::getRows($this->_mailing_id,
           $this->_job_id, $this->_is_distinct,
@@ -403,7 +376,7 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
         return $rows;
 
       case 'click':
-        $rows = CRM_Mailing_Event_BAO_MailingEventClickThrough::getRows(
+        $rows = CRM_Mailing_Event_BAO_MailingEventTrackableURLOpen::getRows(
           $this->_mailing_id, $this->_job_id,
           $this->_is_distinct, $this->_url_id,
           $offset, $rowCount, $sort
@@ -441,7 +414,6 @@ class CRM_Mailing_Selector_Event extends CRM_Core_Selector_Base implements CRM_C
         'queue' => ts('Intended Recipients'),
         'delivered' => ts('Successful Deliveries'),
         'bounce' => ts('Bounces'),
-        'forward' => ts('Forwards'),
         'reply' => $this->_is_distinct ? ts('Unique Replies') : ts('Replies'),
         'unsubscribe' => ts('Unsubscribe Requests'),
         'optout' => ts('Opt-out Requests'),

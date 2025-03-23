@@ -238,9 +238,7 @@ ACOS(
     $qill = [];
     foreach ($proximityVars as $var => $recordQill) {
       $proximityValues = $query->getWhereValues("prox_{$var}", $grouping);
-      if (!empty($proximityValues) &&
-        !empty($proximityValues[2])
-      ) {
+      if (!empty($proximityValues[2])) {
         $proximityAddress[$var] = $proximityValues[2];
         if ($recordQill) {
           $qill[] = $proximityValues[2];
@@ -301,8 +299,8 @@ ACOS(
     }
 
     if (
-      !is_numeric(CRM_Utils_Array::value('geo_code_1', $proximityAddress)) ||
-      !is_numeric(CRM_Utils_Array::value('geo_code_2', $proximityAddress))
+      !is_numeric($proximityAddress['geo_code_1'] ?? '') ||
+      !is_numeric($proximityAddress['geo_code_2'] ?? '')
     ) {
       // we are setting the where clause to 0 here, so we wont return anything
       $qill .= ': ' . ts('We could not geocode the destination address.');
@@ -328,7 +326,7 @@ ACOS(
    */
   public static function fixInputParams(&$input) {
     foreach ($input as $param) {
-      if (CRM_Utils_Array::value('0', $param) == 'prox_distance') {
+      if (($param['0'] ?? NULL) == 'prox_distance') {
         // add prox_ prefix to these
         $param_alter = ['street_address', 'city', 'postal_code', 'state_province', 'country'];
 

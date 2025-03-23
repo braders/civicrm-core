@@ -5,17 +5,19 @@
     bindings: {
       fields: '<',
       clauses: '<',
+      aliases: '<?',
       format: '@',
       op: '@',
       allowFunctions: '<',
       skip: '<',
       label: '@',
+      help: '@',
       hideLabel: '@',
       placeholder: '<',
       deleteGroup: '&'
     },
     templateUrl: '~/crmSearchAdmin/crmSearchClause.html',
-    controller: function ($scope, $element, searchMeta) {
+    controller: function ($scope, $element, searchMeta, crmUiHelp) {
       var ts = $scope.ts = CRM.ts('org.civicrm.search_kit'),
         ctrl = this,
         meta = {};
@@ -31,6 +33,7 @@
 
       this.$onInit = function() {
         ctrl.hasParent = !!$element.attr('delete-group');
+        $scope.hs = crmUiHelp({file: 'CRM/Search/Help/Compose'});
       };
 
       // Gets the first arg of type "field"
@@ -47,8 +50,16 @@
       };
 
       this.getFieldOrFunction = function(expr) {
+        // Search select clause for this alias (used for HAVING expressions which only include the alias)
+        if (this.aliases) {
+          let fullExpr = this.aliases.find(item => item.endsWith(' AS ' + expr));
+          expr = fullExpr || expr;
+        }
         if (ctrl.hasFunction(expr)) {
-          return searchMeta.parseExpr(expr).fn;
+          let parsed = searchMeta.parseExpr(expr);
+          // Pass-thru data_type of expression if fn doesn't have a data_type
+          parsed.fn.data_type = parsed.fn.data_type || parsed.data_type;
+          return parsed.fn;
         }
         return ctrl.getField(expr);
       };

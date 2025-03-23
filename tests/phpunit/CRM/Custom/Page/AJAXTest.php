@@ -15,10 +15,15 @@
  */
 class CRM_Custom_Page_AJAXTest extends CiviUnitTestCase {
 
+  protected function setUp(): void {
+    parent::setUp();
+    $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
+  }
+
   /**
    * Test multi-record custom fields
    */
-  public function testMultiRecordFieldList() {
+  public function testMultiRecordFieldList(): void {
     //create multi record custom group
     $ids = $this->CustomGroupMultipleCreateWithFields(['style' => 'Tab with table']);
     $params = [

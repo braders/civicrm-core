@@ -6,14 +6,16 @@ require_once __DIR__ . '/../../../../../../../tests/phpunit/api/v4/Api4TestBase.
 
 use api\v4\Api4TestBase;
 use Civi\API\Exception\UnauthorizedException;
+use Civi\Api4\Action\GetLinks;
 use Civi\Api4\Activity;
+use Civi\Api4\Address;
 use Civi\Api4\Contact;
 use Civi\Api4\ContactType;
 use Civi\Api4\Email;
-use Civi\Api4\Phone;
 use Civi\Api4\SavedSearch;
 use Civi\Api4\SearchDisplay;
 use Civi\Api4\UFMatch;
+use Civi\Test\CiviEnvBuilder;
 use Civi\Test\TransactionalInterface;
 
 /**
@@ -22,12 +24,30 @@ use Civi\Test\TransactionalInterface;
 class SearchRunTest extends Api4TestBase implements TransactionalInterface {
   use \Civi\Test\ACLPermissionTrait;
 
-  public function setUpHeadless() {
+  public function setUpHeadless(): CiviEnvBuilder {
     // Civi\Test has many helpers, like install(), uninstall(), sql(), and sqlFile().
     // See: https://docs.civicrm.org/dev/en/latest/testing/phpunit/#civitest
     return \Civi\Test::headless()
       ->installMe(__DIR__)
       ->apply();
+  }
+
+  /**
+   * @inheritDoc
+   */
+  protected function setUp(): void {
+    \CRM_Core_BAO_ConfigSetting::enableAllComponents();
+    parent::setUp();
+  }
+
+  /**
+   * @inheritDoc
+   */
+  public function tearDown(): void {
+    \Civi\Api4\Setting::revert(FALSE)
+      ->addSelect('geoProvider')
+      ->execute();
+    parent::tearDown();
   }
 
   /**
@@ -48,8 +68,11 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ['first_name' => 'Two', 'last_name' => $lastName, 'contact_sub_type' => ['Tester']],
       ['first_name' => 'Three', 'last_name' => $lastName, 'contact_sub_type' => ['Bot']],
       ['first_name' => 'Four', 'middle_name' => 'None', 'last_name' => $lastName],
+      ['first_name' => 'Five', 'last_name' => $lastName],
     ];
-    Contact::save(FALSE)->setRecords($sampleData)->execute();
+    $this->saveTestRecords('Individual', [
+      'records' => $sampleData,
+    ]);
 
     $params = [
       'checkPermissions' => FALSE,
@@ -59,14 +82,16 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
         'api_params' => [
           'version' => 4,
           'select' => ['id', 'first_name', 'middle_name', 'last_name', 'contact_sub_type:label', 'is_deceased'],
-          'where' => [],
+          'where' => [
+            ['do_not_email', 'IS EMPTY'],
+          ],
         ],
       ],
       'display' => [
         'type' => 'table',
-        'label' => '',
+        'label' => 'tesdDisplay',
         'settings' => [
-          'limit' => 20,
+          'limit' => 4,
           'pager' => TRUE,
           'columns' => [
             [
@@ -108,6 +133,10 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       'filters' => ['last_name' => $lastName],
       'afform' => NULL,
     ];
+
+    // Check row count
+    $count = civicrm_api4('SearchDisplay', 'run', ['return' => 'row_count'] + $params);
+    $this->assertCount(5, $count);
 
     $result = civicrm_api4('SearchDisplay', 'run', $params);
     $this->assertCount(4, $result);
@@ -154,6 +183,76 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $this->assertCount(2, $count);
   }
 
+  public function testDefaultDisplayLinks(): void {
+    $group1 = $this->createTestRecord('Group', ['title' => uniqid('a')])['id'];
+    $group2 = $this->createTestRecord('Group', ['title' => uniqid('b')])['id'];
+    $contact1 = $this->createTestRecord('Individual', ['last_name' => 'b', 'first_name' => 'b'])['id'];
+    $contact2 = $this->createTestRecord('Individual', ['last_name' => 'a', 'first_name' => 'a'])['id'];
+    // Add both contacts to group2
+    $this->saveTestRecords('GroupContact', [
+      'records' => [
+        ['contact_id' => $contact1, 'group_id' => $group2],
+        ['contact_id' => $contact2, 'group_id' => $group2],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Group',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'title',
+            'Group_GroupContact_Contact_01.sort_name',
+          ],
+          'join' => [
+            [
+              'Contact AS Group_GroupContact_Contact_01',
+              'LEFT',
+              'GroupContact',
+              ['id', '=', 'Group_GroupContact_Contact_01.group_id'],
+              ['Group_GroupContact_Contact_01.status:name', '=', '"Added"'],
+            ],
+          ],
+          'where' => [],
+        ],
+      ],
+      'display' => NULL,
+      'sort' => [
+        ['title', 'ASC'],
+        ['Group_GroupContact_Contact_01.sort_name', 'ASC'],
+      ],
+      'filters' => ['id' => [$group1, $group2]],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(1, $result[0]['columns'][0]['links']);
+    $this->assertEquals('', $result[0]['columns'][1]['val']);
+    $this->assertArrayNotHasKey('links', $result[0]['columns'][1]);
+    $this->assertCount(1, $result[1]['columns'][0]['links']);
+    $this->assertCount(1, $result[1]['columns'][1]['links']);
+    $this->assertCount(1, $result[2]['columns'][0]['links']);
+    $this->assertCount(1, $result[2]['columns'][1]['links']);
+    $this->assertContains('View Group', array_column($result[0]['columns'][2]['links'], 'text'));
+    $this->assertContains('Update Group', array_column($result[0]['columns'][2]['links'], 'text'));
+    $this->assertContains('Delete Group', array_column($result[0]['columns'][2]['links'], 'text'));
+    // Add and browse links should not be shown in rows
+    $this->assertNotContains('Add Group', array_column($result[0]['columns'][2]['links'], 'text'));
+    $this->assertNotContains('Browse Group', array_column($result[0]['columns'][2]['links'], 'text'));
+    // No contact links in 1st row since the group is empty
+    $this->assertNotContains('View Contact', array_column($result[0]['columns'][2]['links'], 'text'));
+    $this->assertNotContains('Delete Contact', array_column($result[0]['columns'][2]['links'], 'text'));
+    $this->assertContains('View Contact', array_column($result[1]['columns'][2]['links'], 'text'));
+    $this->assertContains('Delete Contact', array_column($result[1]['columns'][2]['links'], 'text'));
+    $this->assertContains('View Contact', array_column($result[2]['columns'][2]['links'], 'text'));
+    $this->assertContains('Delete Contact', array_column($result[2]['columns'][2]['links'], 'text'));
+    // Add and browse links should not be shown in rows
+    $this->assertNotContains('Add Contact', array_column($result[1]['columns'][2]['links'], 'text'));
+    $this->assertNotContains('Browse Contact', array_column($result[2]['columns'][2]['links'], 'text'));
+  }
+
   /**
    * Test return values are augmented by tokens.
    */
@@ -178,7 +277,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ],
       'display' => [
         'type' => 'table',
-        'label' => '',
+        'label' => 'tesdDisplay',
         'settings' => [
           'limit' => 20,
           'pager' => TRUE,
@@ -232,6 +331,305 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $this->assertEquals($lastName, $result->first()['data']['last_name']);
   }
 
+  public function testActionAndTaskLinks():void {
+    $contributions = $this->saveTestRecords('Contribution', [
+      'records' => [
+        ['total_amount' => 100],
+      ],
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contribution',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['contact_id.display_name'],
+          'where' => [['id', 'IN', $contributions->column('id')]],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'columns' => [
+            [
+              'key' => 'contact_id.display_name',
+              'label' => 'Contact',
+              'dataType' => 'String',
+              'type' => 'field',
+            ],
+            [
+              'type' => 'buttons',
+              'links' => [
+                [
+                  'entity' => 'Contribution',
+                  'task' => 'contribution.' . \CRM_Contribute_Task::PDF_RECEIPT,
+                  'icon' => 'fa-external-link',
+                ],
+                [
+                  'entity' => 'Contribution',
+                  'task' => 'update',
+                  'icon' => 'fa-pencil',
+                ],
+                [
+                  'entity' => 'Contribution',
+                  'title' => 'Delete',
+                  'action' => 'delete',
+                  'icon' => 'fa-trash',
+                  'target' => 'crm-popup',
+                ],
+              ],
+            ],
+          ],
+          'sort' => [
+            ['id', 'ASC'],
+          ],
+        ],
+      ],
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    // TODO: This test may need to be updated as core tasks evolve
+    $this->assertEquals(1, $result->count());
+    // 1st link is to a quickform-based search task (CRM_Contribute_Task::PDF_RECEIPT)
+    $this->assertArrayNotHasKey('task', $result[0]['columns'][1]['links'][0]);
+    $this->assertStringContainsString('id=' . $contributions[0]['id'] . '&qfKey=', $result[0]['columns'][1]['links'][0]['url']);
+    $this->assertEquals('fa-external-link', $result[0]['columns'][1]['links'][0]['icon']);
+    // 2nd link is to the native SK bulk-update task
+    $this->assertArrayNotHasKey('url', $result[0]['columns'][1]['links'][1]);
+    $this->assertArrayNotHasKey('action', $result[0]['columns'][1]['links'][1]);
+    $this->assertEquals('update', $result[0]['columns'][1]['links'][1]['task']);
+    $this->assertEquals('fa-pencil', $result[0]['columns'][1]['links'][1]['icon']);
+    // 3rd link is a popup link to the delete contribution quickform
+    $this->assertArrayNotHasKey('task', $result[0]['columns'][1]['links'][2]);
+    $this->assertStringContainsString('action=delete&id=' . $contributions[0]['id'], $result[0]['columns'][1]['links'][2]['url']);
+    $this->assertEquals('crm-popup', $result[0]['columns'][1]['links'][2]['target']);
+    $this->assertEquals('fa-trash', $result[0]['columns'][1]['links'][2]['icon']);
+    $this->assertEquals('Delete', $result[0]['columns'][1]['links'][2]['title']);
+  }
+
+  public function testEnableDisableTaskLinks():void {
+    $contributionPage = $this->createTestRecord('ContributionPage', [
+      'is_active' => TRUE,
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'ContributionPage',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['title'],
+          'where' => [['id', '=', $contributionPage['id']]],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'testDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'columns' => [
+            [
+              'key' => 'title',
+              'label' => 'Title',
+              'dataType' => 'String',
+              'type' => 'field',
+            ],
+            [
+              'type' => 'buttons',
+              'links' => [
+                [
+                  'entity' => 'ContributionPage',
+                  'task' => 'enable',
+                  'icon' => 'fa-pencil',
+                ],
+                [
+                  'entity' => 'ContributionPage',
+                  'task' => 'disable',
+                  'icon' => 'fa-pencil',
+                ],
+              ],
+            ],
+          ],
+          'sort' => [
+            ['id', 'ASC'],
+          ],
+        ],
+      ],
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertEquals(1, $result->count());
+    $this->assertCount(1, $result[0]['columns'][1]['links']);
+    // Native SK tasks should not have a url
+    $this->assertArrayNotHasKey('url', $result[0]['columns'][1]['links'][0]);
+    $this->assertArrayNotHasKey('action', $result[0]['columns'][1]['links'][0]);
+    $this->assertEquals('disable', $result[0]['columns'][1]['links'][0]['task']);
+    $this->assertEquals('fa-pencil', $result[0]['columns'][1]['links'][0]['icon']);
+  }
+
+  public function testRelationshipCacheLinks():void {
+    $case = $this->createTestRecord('Case');
+    $relationships = $this->saveTestRecords('Relationship', [
+      'records' => [
+        ['contact_id_a' => $this->createTestRecord('Contact')['id'], 'is_active' => TRUE],
+        ['contact_id_a' => $this->createTestRecord('Contact')['id'], 'is_active' => FALSE, 'case_id' => $case['id']],
+      ],
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'RelationshipCache',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['near_contact_id.display_name'],
+          'where' => [['relationship_id', 'IN', $relationships->column('id')]],
+          'join' => [
+            [
+              'Case AS RelationshipCache_Case_case_id_01',
+              'LEFT',
+              ['case_id', '=', 'RelationshipCache_Case_case_id_01.id'],
+            ],
+          ],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'columns' => [
+            [
+              'key' => 'near_contact_id.display_name',
+              'label' => 'Contact',
+              'dataType' => 'String',
+              'type' => 'field',
+            ],
+            [
+              'type' => 'links',
+              'links' => [
+                [
+                  'entity' => 'Relationship',
+                  'action' => 'view',
+                  'icon' => 'fa-external-link',
+                ],
+                [
+                  'title' => '0',
+                  'entity' => 'Relationship',
+                  'task' => 'delete',
+                  'icon' => 'fa-trash',
+                ],
+                [
+                  'entity' => 'Relationship',
+                  'task' => 'enable',
+                ],
+                [
+                  'entity' => 'Relationship',
+                  'task' => 'disable',
+                ],
+                [
+                  'entity' => 'Case',
+                  'action' => 'view',
+                  'join' => 'RelationshipCache_Case_case_id_01',
+                  'text' => 'Manage Case',
+                ],
+              ],
+            ],
+          ],
+          'sort' => [
+            ['relationship_id', 'ASC'],
+          ],
+        ],
+      ],
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(4, $result);
+    $this->assertCount(3, $result[0]['columns'][1]['links']);
+    $this->assertCount(4, $result[2]['columns'][1]['links']);
+    // 1st link is to a quickform-based action
+    $this->assertArrayNotHasKey('task', $result[0]['columns'][1]['links'][0]);
+    $this->assertStringContainsString('id=' . $relationships[0]['id'], $result[0]['columns'][1]['links'][0]['url']);
+    // 2nd link is to delete
+    $this->assertEquals('fa-trash', $result[0]['columns'][1]['links'][1]['icon']);
+    // Ensure "empty" titles are still returned
+    $this->assertEquals('0', $result[0]['columns'][1]['links'][1]['title']);
+    // 3rd link is the disable task for active relationships or the enable task for inactive ones
+    $this->assertEquals('disable', $result[0]['columns'][1]['links'][2]['task']);
+    $this->assertEquals('disable', $result[1]['columns'][1]['links'][2]['task']);
+    $this->assertEquals('enable', $result[2]['columns'][1]['links'][2]['task']);
+    $this->assertEquals('enable', $result[3]['columns'][1]['links'][2]['task']);
+    $this->assertStringContainsString('Enable', $result[3]['columns'][1]['links'][2]['title']);
+    // 4th link is to the case, and only for the relevant entity
+    $this->assertEquals('Manage Case', $result[2]['columns'][1]['links'][3]['text']);
+    $this->assertStringContainsString("id={$case['id']}", $result[3]['columns'][1]['links'][3]['url']);
+  }
+
+  public function testRelatedContactSearch(): void {
+    $this->createTestRecord('CustomGroup', [
+      'extends' => 'Relationship',
+      'name' => 'test_rel_fields',
+    ]);
+    $this->createTestRecord('CustomField', [
+      'custom_group_id.name' => 'test_rel_fields',
+      'label' => 'Opts',
+      'html_type' => 'Select',
+      'option_values' => ['r' => 'Red', 'g' => 'Green', 'b' => 'Blue'],
+    ]);
+
+    $cids = $this->saveTestRecords('Individual', [
+      'records' => 3,
+    ])->column('id');
+
+    $this->saveTestRecords('Relationship', [
+      'defaults' => [
+        'contact_id_a' => $cids[0],
+        'relationship_type_id:name' => 'Child of',
+      ],
+      'records' => [
+        ['contact_id_b' => $cids[1], 'test_rel_fields.Opts' => 'r'],
+        ['contact_id_b' => $cids[2], 'test_rel_fields.Opts' => 'g'],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Individual',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'id',
+            'Contact_RelationshipCache_Contact_01.test_rel_fields.Opts:label',
+          ],
+          'where' => [['id', 'IN', $cids]],
+          'join' => [
+            [
+              'Contact AS Contact_RelationshipCache_Contact_01',
+              'INNER',
+              'RelationshipCache',
+              ['id', '=', 'Contact_RelationshipCache_Contact_01.far_contact_id'],
+              ['Contact_RelationshipCache_Contact_01.near_relation:name', '=', '"Child of"'],
+            ],
+          ],
+        ],
+      ],
+      'display' => NULL,
+      'sort' => [
+        ['Contact_RelationshipCache_Contact_01.test_rel_fields.Opts:label', 'ASC'],
+      ],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+    $this->assertEquals('Green', $result[0]['columns'][1]['val']);
+    $this->assertEquals('Red', $result[1]['columns'][1]['val']);
+  }
+
   /**
    * Test smarty rewrite syntax.
    */
@@ -268,7 +666,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ],
       'display' => [
         'type' => 'table',
-        'label' => '',
+        'label' => 'tesdDisplay',
         'settings' => [
           'limit' => 20,
           'pager' => TRUE,
@@ -282,13 +680,13 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
               'key' => 'first_name',
               'label' => 'Name',
               'type' => 'field',
-              'rewrite' => '{if "[nick_name]"}[nick_name]{else}[first_name]{/if} [last_name]',
+              'rewrite' => '{if $nick_name}{$nick_name}{else}[first_name]{/if} [last_name]',
             ],
             [
               'key' => 'Contact_Email_contact_id_01.email',
               'label' => 'Email',
               'type' => 'field',
-              'rewrite' => '{if "[Contact_Email_contact_id_01.email]"}[Contact_Email_contact_id_01.email] ([Contact_Email_contact_id_01.location_type_id:label]){/if}',
+              'rewrite' => '{if $Contact_Email_contact_id_01.email}{$Contact_Email_contact_id_01.email} ({$Contact_Email_contact_id_01.location_type_id_label}){/if}',
             ],
           ],
           'sort' => [
@@ -311,76 +709,38 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     }
     catch (\Exception $e) {
     }
-  }
 
-  /**
-   * Test in-place editable for update and create.
-   */
-  public function testInPlaceEditAndCreate() {
-    $lastName = uniqid(__FUNCTION__);
-    $sampleData = [
-      ['first_name' => 'One', 'last_name' => $lastName],
-      ['last_name' => $lastName],
-    ];
-    $contacts = Contact::save(FALSE)->setRecords($sampleData)->execute()->column('id');
-    $email = Email::create(FALSE)
-      ->addValue('contact_id', $contacts[0])
-      ->addValue('email', 'testmail@unit.test')
-      ->execute()->single()['id'];
-    $phone = Phone::create(FALSE)
-      ->addValue('contact_id', $contacts[1])
-      ->addValue('phone', '123456')
-      ->execute()->single()['id'];
+    // Start with email as base entity and use implicit join
 
     $params = [
       'checkPermissions' => FALSE,
       'return' => 'page:1',
       'savedSearch' => [
-        'api_entity' => 'Contact',
+        'api_entity' => 'Email',
         'api_params' => [
           'version' => 4,
-          'select' => ['first_name', 'Contact_Email_contact_id_01.email', 'Contact_Phone_contact_id_01.phone'],
-          'where' => [['last_name', '=', $lastName]],
-          'join' => [
-            [
-              "Email AS Contact_Email_contact_id_01",
-              "LEFT",
-              ["id", "=", "Contact_Email_contact_id_01.contact_id"],
-              ["Contact_Email_contact_id_01.is_primary", "=", TRUE],
-            ],
-            [
-              "Phone AS Contact_Phone_contact_id_01",
-              "LEFT",
-              ["id", "=", "Contact_Phone_contact_id_01.contact_id"],
-            ],
-          ],
+          'select' => ['id', 'email', 'contact_id', 'contact_id.first_name', 'contact_id.last_name', 'contact_id.nick_name'],
+          'where' => [['contact_id.last_name', '=', $lastName]],
         ],
       ],
       'display' => [
         'type' => 'table',
-        'label' => '',
+        'label' => 'testDisplay',
         'settings' => [
           'limit' => 20,
-          'pager' => FALSE,
+          'pager' => TRUE,
           'columns' => [
+            [
+              'key' => 'contact_id',
+              'label' => 'Contact ID',
+              'type' => 'field',
+              'rewrite' => '#{$contact_id.id} is #{$contact_id}',
+            ],
             [
               'key' => 'first_name',
               'label' => 'Name',
               'type' => 'field',
-              'editable' => TRUE,
-              'icons' => [['field' => 'activity_type_id:icon', 'side' => 'left']],
-            ],
-            [
-              'key' => 'Contact_Email_contact_id_01.email',
-              'label' => 'Email',
-              'type' => 'field',
-              'editable' => TRUE,
-            ],
-            [
-              'key' => 'Contact_Phone_contact_id_01.phone',
-              'label' => 'Phone',
-              'type' => 'field',
-              'editable' => TRUE,
+              'rewrite' => '{if $contact_id.nick_name}{$contact_id.nick_name}{else}[contact_id.first_name]{/if} {$contact_id.last_name}',
             ],
           ],
           'sort' => [
@@ -390,66 +750,8 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ],
     ];
     $result = civicrm_api4('SearchDisplay', 'run', $params);
-
-    // Contact 1 first name can be updated
-    $this->assertEquals('One', $result[0]['columns'][0]['val']);
-    $this->assertEquals($contacts[0], $result[0]['columns'][0]['edit']['record']['id']);
-    $this->assertEquals('Contact', $result[0]['columns'][0]['edit']['entity']);
-    $this->assertEquals('Text', $result[0]['columns'][0]['edit']['input_type']);
-    $this->assertEquals('String', $result[0]['columns'][0]['edit']['data_type']);
-    $this->assertEquals('first_name', $result[0]['columns'][0]['edit']['value_key']);
-    $this->assertEquals('update', $result[0]['columns'][0]['edit']['action']);
-    $this->assertEquals('One', $result[0]['columns'][0]['edit']['value']);
-
-    // Contact 1 email can be updated
-    $this->assertEquals('testmail@unit.test', $result[0]['columns'][1]['val']);
-    $this->assertEquals($email, $result[0]['columns'][1]['edit']['record']['id']);
-    $this->assertEquals('Email', $result[0]['columns'][1]['edit']['entity']);
-    $this->assertEquals('Text', $result[0]['columns'][1]['edit']['input_type']);
-    $this->assertEquals('String', $result[0]['columns'][1]['edit']['data_type']);
-    $this->assertEquals('email', $result[0]['columns'][1]['edit']['value_key']);
-    $this->assertEquals('update', $result[0]['columns'][1]['edit']['action']);
-    $this->assertEquals('testmail@unit.test', $result[0]['columns'][1]['edit']['value']);
-
-    // Contact 1 - new phone can be created
-    $this->assertNull($result[0]['columns'][2]['val']);
-    $this->assertEquals(['contact_id' => $contacts[0]], $result[0]['columns'][2]['edit']['record']);
-    $this->assertEquals('Phone', $result[0]['columns'][2]['edit']['entity']);
-    $this->assertEquals('Text', $result[0]['columns'][2]['edit']['input_type']);
-    $this->assertEquals('String', $result[0]['columns'][2]['edit']['data_type']);
-    $this->assertEquals('phone', $result[0]['columns'][2]['edit']['value_key']);
-    $this->assertEquals('create', $result[0]['columns'][2]['edit']['action']);
-    $this->assertNull($result[0]['columns'][2]['edit']['value']);
-
-    // Contact 2 first name can be added
-    $this->assertNull($result[1]['columns'][0]['val']);
-    $this->assertEquals($contacts[1], $result[1]['columns'][0]['edit']['record']['id']);
-    $this->assertEquals('Contact', $result[1]['columns'][0]['edit']['entity']);
-    $this->assertEquals('Text', $result[1]['columns'][0]['edit']['input_type']);
-    $this->assertEquals('String', $result[1]['columns'][0]['edit']['data_type']);
-    $this->assertEquals('first_name', $result[1]['columns'][0]['edit']['value_key']);
-    $this->assertEquals('update', $result[1]['columns'][0]['edit']['action']);
-    $this->assertNull($result[1]['columns'][0]['edit']['value']);
-
-    // Contact 2 - new email can be created
-    $this->assertNull($result[1]['columns'][1]['val']);
-    $this->assertEquals(['contact_id' => $contacts[1], 'is_primary' => TRUE], $result[1]['columns'][1]['edit']['record']);
-    $this->assertEquals('Email', $result[1]['columns'][1]['edit']['entity']);
-    $this->assertEquals('Text', $result[1]['columns'][1]['edit']['input_type']);
-    $this->assertEquals('String', $result[1]['columns'][1]['edit']['data_type']);
-    $this->assertEquals('email', $result[1]['columns'][1]['edit']['value_key']);
-    $this->assertEquals('create', $result[1]['columns'][1]['edit']['action']);
-    $this->assertNull($result[1]['columns'][1]['edit']['value']);
-
-    // Contact 2 phone can be updated
-    $this->assertEquals('123456', $result[1]['columns'][2]['val']);
-    $this->assertEquals($phone, $result[1]['columns'][2]['edit']['record']['id']);
-    $this->assertEquals('Phone', $result[1]['columns'][2]['edit']['entity']);
-    $this->assertEquals('Text', $result[1]['columns'][2]['edit']['input_type']);
-    $this->assertEquals('String', $result[1]['columns'][2]['edit']['data_type']);
-    $this->assertEquals('phone', $result[1]['columns'][2]['edit']['value_key']);
-    $this->assertEquals('update', $result[1]['columns'][2]['edit']['action']);
-    $this->assertEquals('123456', $result[1]['columns'][2]['edit']['value']);
+    $this->assertEquals("#{$contacts[0]['id']} is #{$contacts[0]['id']}", $result[0]['columns'][0]['val']);
+    $this->assertEquals("Uno $lastName", $result[0]['columns'][1]['val']);
   }
 
   /**
@@ -466,7 +768,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     ];
     $sampleData = Contact::save(FALSE)
       ->setRecords($sampleData)->execute()
-      ->indexBy('first_name')->column('id');
+      ->column('id', 'first_name');
 
     // Create logged-in user
     UFMatch::delete(FALSE)
@@ -515,6 +817,10 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
                 'label' => 'First Name',
                 'dataType' => 'String',
                 'type' => 'field',
+                'link' => [
+                  'entity' => 'Contact',
+                  'action' => 'update',
+                ],
               ],
               [
                 'key' => 'last_name',
@@ -554,6 +860,16 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $this->assertCount(2, $result);
     $this->assertEquals($sampleData['Three'], $result[0]['data']['id']);
     $this->assertEquals($sampleData['Four'], $result[1]['data']['id']);
+
+    // Ensure edit link is only shown for contacts we have permission to edit
+    $hooks->setHook('civicrm_aclWhereClause', [$this, 'aclViewAllEditOne']);
+    $this->cleanupCachedPermissions();
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(4, $result);
+    $this->assertNotEmpty($result[1]['columns'][1]['links']);
+    $this->assertTrue(empty($result[1]['columns'][0]['links']));
+    $this->assertTrue(empty($result[1]['columns'][2]['links']));
+    $this->assertTrue(empty($result[1]['columns'][3]['links']));
   }
 
   public function testWithACLBypass() {
@@ -588,7 +904,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
           'saved_search_id' => '$id',
           'name' => $displayName,
           'type' => 'table',
-          'label' => '',
+          'label' => 'TestDisplay',
           'acl_bypass' => TRUE,
           'settings' => [
             'limit' => 20,
@@ -716,7 +1032,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     }
     $this->assertStringContainsString('failed', $error);
 
-    $config->userPermissionClass->permissions = ['access CiviCRM', 'administer search_kit'];
+    $config->userPermissionClass->permissions = ['administer CiviCRM'];
 
     // Admins can edit the search and the display
     SavedSearch::update()->addWhere('name', '=', $searchName)
@@ -765,7 +1081,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ],
       'display' => [
         'type' => 'list',
-        'label' => '',
+        'label' => 'tesdDisplay',
         'settings' => [
           'limit' => 20,
           'pager' => TRUE,
@@ -838,7 +1154,6 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
             "GROUP_CONCAT(DISTINCT subject) AS GROUP_CONCAT_subject",
           ],
           'groupBy' => ['activity_type_id'],
-          'orderBy' => ['activity_type_id:label'],
           'where' => [],
         ],
       ],
@@ -857,9 +1172,9 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $lastName = uniqid(__FUNCTION__);
     $sampleContacts = [
       ['first_name' => 'Zero', 'last_name' => $lastName, 'is_deceased' => TRUE],
-      ['first_name' => 'One', 'last_name' => $lastName],
-      ['first_name' => 'Two', 'last_name' => $lastName],
-      ['first_name' => 'Three', 'last_name' => $lastName],
+      ['first_name' => 'One', 'last_name' => $lastName, 'birth_date' => 'now - 10 years'],
+      ['first_name' => 'Two', 'last_name' => $lastName, 'birth_date' => 'now - 20 years'],
+      ['first_name' => 'Three', 'last_name' => $lastName, 'birth_date' => 'now - 30 years'],
     ];
     $contacts = Contact::save(FALSE)->setRecords($sampleContacts)->execute();
     $sampleEmails = [
@@ -880,6 +1195,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
           'id',
           'display_name',
           'GROUP_CONCAT(DISTINCT Contact_Email_contact_id_01.email) AS GROUP_CONCAT_Contact_Email_contact_id_01_email',
+          'birth_date',
         ],
         'where' => [['last_name', '=', $lastName]],
         'groupBy' => ['id'],
@@ -951,6 +1267,27 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
             'rewrite' => '',
             'title' => NULL,
           ],
+          [
+            'type' => 'field',
+            'key' => 'birth_date',
+            'dataType' => 'String',
+            'label' => 'Birthday',
+            'sortable' => TRUE,
+            'cssRules' => [
+              [
+                'bg-danger',
+                'birth_date',
+                '>',
+                'now - 15 years',
+              ],
+              [
+                'bg-warning',
+                'birth_date',
+                '<',
+                'now - 15 years',
+              ],
+            ],
+          ],
         ],
         'cssRules' => [
           ['strikethrough', 'is_deceased', '=', TRUE],
@@ -969,7 +1306,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $this->assertEquals('text-center', $result[0]['columns'][0]['cssClass']);
     // First contact is deceased, gets strikethrough class
     $this->assertEquals('strikethrough', $result[0]['cssClass']);
-    $this->assertNotEquals('strikethrough', $result[1]['cssClass']);
+    $this->asserttrue(empty($result[1]['cssClass']));
     // Ensure the view contact link was formed
     $this->assertStringContainsString('cid=' . $contacts[0]['id'], $result[0]['columns'][1]['links'][0]['url']);
     $this->assertEquals('_blank', $result[0]['columns'][1]['links'][0]['target']);
@@ -981,6 +1318,10 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     // 3rd column gets static + conditional style
     $this->assertStringContainsString('text-right', $result[2]['columns'][2]['cssClass']);
     $this->assertStringContainsString('bg-warning', $result[2]['columns'][2]['cssClass']);
+    // 4th column gets relative-date rule
+    $this->assertStringContainsString('bg-danger', $result[1]['columns'][3]['cssClass']);
+    $this->assertStringContainsString('bg-warning', $result[2]['columns'][3]['cssClass']);
+    $this->assertStringContainsString('bg-warning', $result[3]['columns'][3]['cssClass']);
   }
 
   /**
@@ -989,15 +1330,16 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
   public function testIcons() {
     $subject = uniqid(__FUNCTION__);
 
-    $source = Contact::create(FALSE)->execute()->first();
+    $source = $this->createTestRecord('Contact');
 
     $activities = [
       ['activity_type_id:name' => 'Meeting', 'subject' => $subject, 'status_id:name' => 'Scheduled'],
       ['activity_type_id:name' => 'Phone Call', 'subject' => $subject, 'status_id:name' => 'Completed'],
     ];
-    Activity::save(FALSE)
-      ->addDefault('source_contact_id', $source['id'])
-      ->setRecords($activities)->execute();
+    $this->saveTestRecords('Activity', [
+      'defaults' => ['source_contact_id' => $source['id']],
+      'records' => $activities,
+    ]);
 
     $search = [
       'api_entity' => 'Activity',
@@ -1007,7 +1349,9 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
           'id',
         ],
         'orderBy' => [],
-        'where' => [],
+        'where' => [
+          ['subject', '=', $subject],
+        ],
         'groupBy' => [],
         'join' => [],
         'having' => [],
@@ -1064,9 +1408,9 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ->execute();
 
     // Icon based on activity type
-    $this->assertEquals([['class' => 'fa-slideshare', 'side' => 'left']], $result[0]['columns'][0]['icons']);
+    $this->assertEquals(['left' => ['fa-slideshare']], $result[0]['columns'][0]['icons']);
     // Activity type icon + conditional icon based on status
-    $this->assertEquals([['class' => 'fa-star', 'side' => 'right'], ['class' => 'fa-phone', 'side' => 'left']], $result[1]['columns'][0]['icons']);
+    $this->assertEquals(['right' => ['fa-star'], 'left' => ['fa-phone']], $result[1]['columns'][0]['icons']);
   }
 
   /**
@@ -1216,10 +1560,70 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
 
     $result = civicrm_api4('SearchDisplay', 'run', $params);
     $this->assertCount(3, $result);
-    $data = array_column(array_column((array) $result, 'data'), 'COUNT_id', 'contact_type:label');
+    $data = array_column($result->column('data'), 'COUNT_id', 'contact_type:label');
     $this->assertEquals(3, $data['Individual']);
     $this->assertEquals(2, $data['Organization']);
     $this->assertEquals(1, $data['Household']);
+  }
+
+  public function testGroupByAddress(): void {
+    $source = uniqid(__FUNCTION__);
+    $sampleData = [
+      ['contact_type' => 'Individual'],
+      ['contact_type' => 'Individual'],
+      ['contact_type' => 'Individual'],
+      ['contact_type' => 'Organization'],
+      ['contact_type' => 'Organization'],
+      ['contact_type' => 'Household'],
+    ];
+    Contact::save(FALSE)
+      ->addDefault('source', $source)
+      ->setRecords($sampleData)
+      ->addChain('address', Address::create()
+        ->addValue('contact_id', '$id')
+        ->addValue('street_address', '123')
+      )
+      ->execute();
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contact',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'COUNT(id) AS COUNT_id',
+            'Contact_Address_contact_id_01.street_address',
+            'GROUP_CONCAT(DISTINCT sort_name) AS GROUP_CONCAT_sort_name',
+            'GROUP_CONCAT(DISTINCT contact_type:label) AS GROUP_CONCAT_contact_type_label',
+            'GROUP_CONCAT(DISTINCT contact_sub_type:label) AS GROUP_CONCAT_contact_sub_type_label',
+          ],
+          'where' => [
+            ['source', '=', $source],
+          ],
+          'groupBy' => [
+            'Contact_Address_contact_id_01.street_address',
+          ],
+          'join' => [
+            [
+              'Address AS Contact_Address_contact_id_01',
+              'LEFT',
+              ['id', '=', 'Contact_Address_contact_id_01.contact_id'],
+              ['Contact_Address_contact_id_01.is_primary', '=', TRUE],
+            ],
+          ],
+        ],
+      ],
+      'display' => NULL,
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(1, $result);
+    $this->assertEquals(6, $result[0]['data']['COUNT_id']);
+    $this->assertEquals('123', $result[0]['data']['Contact_Address_contact_id_01.street_address']);
+    sort($result[0]['data']['GROUP_CONCAT_contact_type_label']);
+    $this->assertEquals(['Household', 'Individual', 'Organization'], $result[0]['data']['GROUP_CONCAT_contact_type_label']);
   }
 
   public function testGroupByFunction(): void {
@@ -1252,120 +1656,18 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
 
     $result = civicrm_api4('SearchDisplay', 'run', $params);
     $this->assertCount(2, $result);
-    $data = array_column(array_column((array) $result, 'data'), 'COUNT_id');
+    $data = array_column($result->column('data'), 'COUNT_id');
     sort($data);
     $this->assertEquals([1, 2], $data);
   }
 
-  public function testEditableContactFields() {
-    $source = uniqid(__FUNCTION__);
-    $sampleData = [
-      ['contact_type' => 'Individual', 'first_name' => 'One'],
-      ['contact_type' => 'Individual'],
-      ['contact_type' => 'Organization'],
-      ['contact_type' => 'Household'],
-    ];
-    $contact = Contact::save(FALSE)
-      ->addDefault('source', $source)
-      ->setRecords($sampleData)
-      ->execute();
-
-    $params = [
-      'checkPermissions' => FALSE,
-      'return' => 'page:1',
-      'savedSearch' => [
-        'api_entity' => 'Contact',
-        'api_params' => [
-          'version' => 4,
-          'select' => ['first_name', 'organization_name', 'household_name'],
-          'where' => [['source', '=', $source]],
-        ],
-      ],
-      'display' => [
-        'type' => 'table',
-        'label' => '',
-        'settings' => [
-          'actions' => TRUE,
-          'pager' => [],
-          'columns' => [
-            [
-              'key' => 'first_name',
-              'label' => 'First',
-              'dataType' => 'String',
-              'type' => 'field',
-              'editable' => TRUE,
-            ],
-            [
-              'key' => 'organization_name',
-              'label' => 'First',
-              'dataType' => 'String',
-              'type' => 'field',
-              'editable' => TRUE,
-            ],
-            [
-              'key' => 'household_name',
-              'label' => 'First',
-              'dataType' => 'String',
-              'type' => 'field',
-              'editable' => TRUE,
-            ],
-          ],
-          'sort' => [
-            ['id', 'ASC'],
-          ],
-        ],
-      ],
-      'afform' => NULL,
-    ];
-
-    $result = civicrm_api4('SearchDisplay', 'run', $params);
-    // First Individual
-    $expectedFirstNameEdit = [
-      'entity' => 'Contact',
-      'input_type' => 'Text',
-      'data_type' => 'String',
-      'options' => FALSE,
-      'serialize' => FALSE,
-      'nullable' => TRUE,
-      'fk_entity' => NULL,
-      'value_key' => 'first_name',
-      'record' => ['id' => $contact[0]['id']],
-      'action' => 'update',
-      'value' => 'One',
-    ];
-    // Ensure first_name is editable but not organization_name or household_name
-    $this->assertEquals($expectedFirstNameEdit, $result[0]['columns'][0]['edit']);
-    $this->assertTrue(!isset($result[0]['columns'][1]['edit']));
-    $this->assertTrue(!isset($result[0]['columns'][2]['edit']));
-
-    // Second Individual
-    $expectedFirstNameEdit['record']['id'] = $contact[1]['id'];
-    $expectedFirstNameEdit['value'] = NULL;
-    $this->assertEquals($expectedFirstNameEdit, $result[1]['columns'][0]['edit']);
-    $this->assertTrue(!isset($result[1]['columns'][1]['edit']));
-    $this->assertTrue(!isset($result[1]['columns'][2]['edit']));
-
-    // Third contact: Organization
-    $expectedFirstNameEdit['record']['id'] = $contact[2]['id'];
-    $expectedFirstNameEdit['value_key'] = 'organization_name';
-    $this->assertTrue(!isset($result[2]['columns'][0]['edit']));
-    $this->assertEquals($expectedFirstNameEdit, $result[2]['columns'][1]['edit']);
-    $this->assertTrue(!isset($result[2]['columns'][2]['edit']));
-
-    // Third contact: Household
-    $expectedFirstNameEdit['record']['id'] = $contact[3]['id'];
-    $expectedFirstNameEdit['value_key'] = 'household_name';
-    $this->assertTrue(!isset($result[3]['columns'][0]['edit']));
-    $this->assertTrue(!isset($result[3]['columns'][1]['edit']));
-    $this->assertEquals($expectedFirstNameEdit, $result[3]['columns'][2]['edit']);
-  }
-
   public function testContributionCurrency():void {
+    $cid = $this->saveTestRecords('Contact', ['records' => 3])->column('id');
     $contributions = $this->saveTestRecords('Contribution', [
       'records' => [
-        ['total_amount' => 100, 'currency' => 'GBP'],
-        ['total_amount' => 200, 'currency' => 'USD'],
-        ['total_amount' => 500, 'currency' => 'JPY'],
+        ['total_amount' => 100, 'currency' => 'GBP', 'contact_id' => $cid[0]],
+        ['total_amount' => 200, 'currency' => 'USD', 'contact_id' => $cid[1]],
+        ['total_amount' => 500, 'currency' => 'JPY', 'contact_id' => $cid[2]],
       ],
     ]);
 
@@ -1376,6 +1678,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
         'api_entity' => 'Contribution',
         'api_params' => [
           'version' => 4,
+          // Include `id` column so the `sort` works
           'select' => ['total_amount', 'id'],
           'where' => [['id', 'IN', $contributions->column('id')]],
         ],
@@ -1419,6 +1722,446 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
 
     $this->assertEquals('JPY', $result[0]['data']['contribution_id.currency']);
     $this->assertEquals('¥500', $result[0]['columns'][0]['val']);
+
+    // Now try it via joins
+    $params['savedSearch'] = [
+      'api_entity' => 'Contact',
+      'api_params' => [
+        'version' => 4,
+        'select' => ['line_item.line_total', 'id'],
+        'where' => [['contribution.id', 'IN', $contributions->column('id')]],
+        'join' => [
+          ['Contribution AS contribution', 'INNER', ['id', '=', 'contribution.contact_id']],
+          ['LineItem AS line_item', 'INNER', ['contribution.id', '=', 'line_item.contribution_id']],
+        ],
+      ],
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(3, $result);
+
+    // The parent join should have been used rather than adding an unnecessary implicit join
+    $this->assertEquals('GBP', $result[2]['data']['contribution.currency']);
+    $this->assertEquals('£100.00', $result[2]['columns'][0]['val']);
+
+    $this->assertEquals('USD', $result[1]['data']['contribution.currency']);
+    $this->assertEquals('$200.00', $result[1]['columns'][0]['val']);
+
+    $this->assertEquals('JPY', $result[0]['data']['contribution.currency']);
+    $this->assertEquals('¥500', $result[0]['columns'][0]['val']);
+  }
+
+  public function testContributionAggregateCurrency():void {
+    $contributions = $this->saveTestRecords('Contribution', [
+      'records' => [
+        ['total_amount' => 100, 'currency' => 'GBP'],
+        ['total_amount' => 150, 'currency' => 'USD'],
+        ['total_amount' => 500, 'currency' => 'JPY'],
+        ['total_amount' => 250, 'currency' => 'USD'],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contribution',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['SUM(total_amount) AS total', 'COUNT(id) AS count', 'currency'],
+          'where' => [['id', 'IN', $contributions->column('id')]],
+          'groupBy' => ['currency'],
+        ],
+      ],
+      'display' => NULL,
+      'sort' => [['currency', 'ASC']],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(3, $result);
+
+    // Currency should have been used to format the aggregated values
+    $this->assertEquals('GBP', $result[0]['data']['currency']);
+    $this->assertEquals('£100.00', $result[0]['columns'][0]['val']);
+    $this->assertEquals(1, $result[0]['columns'][1]['val']);
+
+    $this->assertEquals('JPY', $result[1]['data']['currency']);
+    $this->assertEquals('¥500', $result[1]['columns'][0]['val']);
+    $this->assertEquals(1, $result[1]['columns'][1]['val']);
+
+    $this->assertEquals('USD', $result[2]['data']['currency']);
+    $this->assertEquals('$400.00', $result[2]['columns'][0]['val']);
+    $this->assertEquals(2, $result[2]['columns'][1]['val']);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contribution',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['SUM(line_item.line_total) AS total', 'id'],
+          'where' => [['id', 'IN', $contributions->column('id')]],
+          'groupBy' => ['id'],
+          'join' => [
+            ['LineItem AS line_item', 'INNER', ['id', '=', 'line_item.contribution_id']],
+          ],
+        ],
+      ],
+      'display' => NULL,
+      'sort' => [['id', 'ASC']],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(4, $result);
+
+    // Currency should have been used to format the aggregated values
+    $this->assertEquals('GBP', $result[0]['data']['currency']);
+    $this->assertEquals('£100.00', $result[0]['columns'][0]['val']);
+
+    $this->assertEquals('USD', $result[1]['data']['currency']);
+    $this->assertEquals('$150.00', $result[1]['columns'][0]['val']);
+
+    $this->assertEquals('JPY', $result[2]['data']['currency']);
+    $this->assertEquals('¥500', $result[2]['columns'][0]['val']);
+
+    $this->assertEquals('USD', $result[3]['data']['currency']);
+    $this->assertEquals('$250.00', $result[3]['columns'][0]['val']);
+  }
+
+  public function testTally(): void {
+    // Really long custom group name - testing to see if tally works with > 64 character column keys
+    $groupName = str_repeat('a', 63);
+    $this->createTestRecord('CustomGroup', [
+      'extends' => 'Individual',
+      'name' => $groupName,
+    ]);
+    $this->createTestRecord('CustomField', [
+      'custom_group_id.name' => $groupName,
+      'label' => 'text',
+      'html_type' => 'Text',
+    ]);
+    $this->createTestRecord('CustomField', [
+      'custom_group_id.name' => $groupName,
+      'label' => 'colors',
+      'html_type' => 'Select',
+      'option_values' => ['r' => 'Red', 'g' => 'Green', 'b' => 'Blue'],
+    ]);
+
+    $contacts = $this->saveTestRecords('Individual', [
+      'records' => [
+        ['first_name' => 'A', 'last_name' => 'A', 'birth_date' => 'now - 20 year 1 month', "$groupName.text" => 'aa'],
+        ['first_name' => 'B', 'last_name' => 'B', "$groupName.colors" => 'b'],
+        ['first_name' => 'C', 'last_name' => 'C', 'birth_date' => 'now - 19 year 1 month'],
+      ],
+    ]);
+
+    $this->createTestRecord('SavedSearch', [
+      'name' => __FUNCTION__,
+      'label' => __FUNCTION__,
+      'api_entity' => 'Individual',
+      'api_params' => [
+        'version' => 4,
+        'select' => [
+          'id',
+          'first_name',
+          'last_name',
+          'age_years',
+          "$groupName.text",
+          "$groupName.colors:label",
+        ],
+        'where' => [
+          ['id', 'IN', $contacts->column('id')],
+        ],
+      ],
+    ]);
+    $this->createTestRecord('SearchDisplay', [
+      'name' => __FUNCTION__,
+      'label' => __FUNCTION__,
+      'saved_search_id.name' => __FUNCTION__,
+      'type' => 'table',
+      'settings' => [
+        'description' => NULL,
+        'sort' => [
+          ['last_name', 'DESC'],
+        ],
+        'limit' => 50,
+        'pager' => [],
+        'columns' => [
+          [
+            'type' => 'field',
+            'key' => 'id',
+            'label' => 'ID',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'COUNT',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'first_name',
+            'label' => 'First Name',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'MIN',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'last_name',
+            'label' => 'Last Name',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_CONCAT',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'age_years',
+            'label' => 'Age',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'AVG',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => "$groupName.text",
+            'label' => 'Text',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'MIN',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => "$groupName.colors:label",
+            'label' => 'Text',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'MAX',
+            ],
+          ],
+        ],
+        'actions' => TRUE,
+        'tally' => [
+          'label' => 'Total',
+        ],
+      ],
+    ]);
+
+    $tally = SearchDisplay::run(FALSE)
+      ->setReturn('tally')
+      ->setDisplay(__FUNCTION__)
+      ->setSavedSearch(__FUNCTION__)
+      ->execute()->single();
+
+    $this->assertSame('3', $tally['id']);
+    $this->assertSame('A', $tally['first_name']);
+    $this->assertSame(['A', 'B', 'C'], $tally['last_name']);
+    $this->assertSame('18.5', $tally['age_years']);
+    $this->assertSame('aa', $tally["$groupName.text"]);
+    $this->assertSame('Blue', $tally["$groupName.colors:label"]);
+  }
+
+  public function testTallyWithGroupBy(): void {
+    \Civi::settings()->set('dateformatshortdate', '%m/%d/%Y');
+    $contacts = $this->saveTestRecords('Individual', [
+      'records' => [
+        ['first_name' => 'A', 'last_name' => 'A'],
+        ['first_name' => 'B', 'last_name' => 'B'],
+        ['first_name' => 'C', 'last_name' => 'C'],
+      ],
+    ]);
+
+    $this->createTestRecord('CustomGroup', [
+      'extends' => 'Contribution',
+      'name' => 'test_contrib_fields',
+    ]);
+    $this->createTestRecord('CustomField', [
+      'custom_group_id.name' => 'test_contrib_fields',
+      'label' => 'text',
+      'html_type' => 'Text',
+    ]);
+    $this->createTestRecord('CustomField', [
+      'custom_group_id.name' => 'test_contrib_fields',
+      'label' => 'options',
+      'html_type' => 'Select',
+      'option_values' => ['r' => 'Red', 'g' => 'Green', 'b' => 'Blue'],
+    ]);
+
+    $contributions = $this->saveTestRecords('Contribution', [
+      'records' => [
+        ['total_amount' => 100, 'contact_id' => $contacts[0]['id'], 'receive_date' => '2024-02-02', 'financial_type_id:name' => 'Donation', 'test_contrib_fields.text' => 'a', 'test_contrib_fields.options' => 'r'],
+        ['total_amount' => 200, 'contact_id' => $contacts[0]['id'], 'receive_date' => '2021-02-02', 'financial_type_id:name' => 'Campaign Contribution', 'test_contrib_fields.text' => 'b', 'test_contrib_fields.options' => 'g'],
+        ['total_amount' => 300, 'contact_id' => $contacts[1]['id'], 'receive_date' => '2022-02-02', 'financial_type_id:name' => 'Member Dues', 'test_contrib_fields.text' => 'c', 'test_contrib_fields.options' => 'b'],
+        ['total_amount' => 400, 'contact_id' => $contacts[2]['id'], 'receive_date' => '2023-02-02', 'financial_type_id:name' => 'Donation', 'test_contrib_fields.text' => 'd', 'test_contrib_fields.options' => 'r'],
+      ],
+    ]);
+
+    $this->createTestRecord('SavedSearch', [
+      'name' => __FUNCTION__,
+      'label' => __FUNCTION__,
+      'api_entity' => 'Contribution',
+      'api_params' => [
+        'version' => 4,
+        'select' => [
+          'COUNT(id) AS COUNT_id',
+          'GROUP_CONCAT(DISTINCT contact_id.sort_name) AS GROUP_CONCAT_contact_id_sort_name',
+          'SUM(total_amount) AS SUM_total_amount',
+          'GROUP_FIRST(receive_date ORDER BY receive_date ASC) AS GROUP_FIRST_receive_date',
+          'GROUP_FIRST(financial_type_id:label ORDER BY receive_date ASC) AS GROUP_FIRST_financial_type_id_label',
+          'GROUP_CONCAT(test_contrib_fields.text ORDER BY receive_date ASC) AS GROUP_CONCAT_test_contrib_fields_text',
+          'GROUP_FIRST(test_contrib_fields.options:label ORDER BY receive_date ASC) AS GROUP_FIRST_test_contrib_fields_options_label',
+        ],
+        'where' => [
+          ['id', 'IN', $contributions->column('id')],
+        ],
+        'groupBy' => [
+          'contact_id',
+        ],
+      ],
+    ]);
+
+    $this->createTestRecord('SearchDisplay', [
+      'name' => __FUNCTION__,
+      'label' => __FUNCTION__,
+      'saved_search_id.name' => __FUNCTION__,
+      'type' => 'table',
+      'settings' => [
+        'description' => NULL,
+        'sort' => [],
+        'limit' => 50,
+        'pager' => [],
+        'placeholder' => 5,
+        'columns' => [
+          [
+            'type' => 'field',
+            'key' => 'COUNT_id',
+            'label' => '(Count) Contribution ID',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'SUM',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'GROUP_CONCAT_contact_id_sort_name',
+            'label' => '(List) Contact Sort Name',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_CONCAT',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'SUM_total_amount',
+            'label' => '(Sum) Total Amount',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'SUM',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'GROUP_FIRST_receive_date',
+            'label' => 'First Contribution Date',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_FIRST',
+            ],
+            'format' => 'dateformatshortdate',
+          ],
+          [
+            'type' => 'field',
+            'key' => 'GROUP_FIRST_financial_type_id_label',
+            'label' => '(First) Financial Type',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_FIRST',
+              'rewrite' => '[GROUP_FIRST_financial_type_id_label], Innit',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'GROUP_FIRST_test_contrib_fields_options_label',
+            'label' => '(First) Options',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_FIRST',
+            ],
+          ],
+          [
+            'type' => 'field',
+            'key' => 'GROUP_CONCAT_test_contrib_fields_text',
+            'label' => '(List) Text',
+            'sortable' => TRUE,
+            'tally' => [
+              'fn' => 'GROUP_FIRST',
+            ],
+          ],
+        ],
+        'actions' => TRUE,
+        'tally' => [
+          'label' => 'Total',
+        ],
+      ],
+    ]);
+
+    $tally = SearchDisplay::run(FALSE)
+      ->setReturn('tally')
+      ->setDisplay(__FUNCTION__)
+      ->setSavedSearch(__FUNCTION__)
+      ->execute()->single();
+
+    $this->assertSame('4', $tally['COUNT_id']);
+    $this->assertEquals(['A, A', 'B, B', 'C, C'], $tally['GROUP_CONCAT_contact_id_sort_name']);
+    $this->assertSame('$1,000.00', $tally['SUM_total_amount']);
+    $this->assertSame('02/02/2021', $tally['GROUP_FIRST_receive_date']);
+    $this->assertSame('Donation, Innit', $tally['GROUP_FIRST_financial_type_id_label']);
+    $this->assertSame('Blue', $tally['GROUP_FIRST_test_contrib_fields_options_label']);
+    $this->assertSame('b', $tally['GROUP_CONCAT_test_contrib_fields_text']);
+  }
+
+  public function testContributionTotalCountWithTestAndTemplateContributions():void {
+    // Add a source here for the where below, as if we use id, we get the test and template contributions
+    $contributions = $this->saveTestRecords('Contribution', [
+      'records' => [
+        ['is_test' => TRUE, 'source' => 'TestTemplate'],
+        ['is_template' => TRUE, 'source' => 'TestTemplate'],
+        ['source' => 'TestTemplate'],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contribution',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['id'],
+          'where' => [['source', '=', 'TestTemplate']],
+        ],
+      ],
+      'display' => [
+        'settings' => [
+          'columns' => [
+            [
+              'type' => 'field',
+              'key' => 'id',
+              'tally' => [
+                'fn' => 'COUNT',
+              ],
+            ],
+          ],
+        ],
+      ],
+    ];
+
+    $return = civicrm_api4('SearchDisplay', 'run', $params);
+    $params['return'] = 'tally';
+    $total = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertEquals($return->rowCount, $total[0]['id']);
   }
 
   public function testSelectEquations() {
@@ -1450,6 +2193,244 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
     $this->assertEquals(1, $result[0]['columns'][1]['val']);
     $this->assertEquals(2, $result[1]['columns'][1]['val']);
     $this->assertEquals(3, $result[2]['columns'][1]['val']);
+  }
+
+  public function testSelectPseudoFields() {
+    $activities = $this->saveTestRecords('Activity', [
+      'records' => 2,
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Activity',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['id', 'NOW()', 'CURDATE()', 'result_row_num'],
+          'where' => [['id', 'IN', $activities->column('id')]],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'testDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'columns' => [
+            [
+              'type' => 'field',
+              'key' => 'id',
+              'label' => 'ID',
+            ],
+            [
+              'type' => 'field',
+              'key' => 'result_row_num',
+              'label' => 'Row',
+            ],
+            [
+              'type' => 'field',
+              'key' => 'CURDATE()',
+              'label' => 'Date',
+            ],
+            [
+              'type' => 'field',
+              'key' => 'NOW()',
+              'label' => 'Date + Time',
+            ],
+          ],
+        ],
+      ],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+
+    $date = date('Y-m-d');
+
+    // Check CURDATE()
+    $this->assertEquals($date, $result[0]['data']['CURDATE:']);
+    $this->assertEquals($date, $result[1]['data']['CURDATE:']);
+    $this->assertEquals(\CRM_Utils_Date::customFormat($date), $result[0]['columns'][2]['val']);
+    $this->assertEquals(\CRM_Utils_Date::customFormat($date), $result[1]['columns'][2]['val']);
+
+    // Check NOW()
+    $this->assertStringStartsWith("$date ", $result[0]['data']['NOW:']);
+    $this->assertStringStartsWith("$date ", $result[1]['data']['NOW:']);
+    $this->assertEquals(\CRM_Utils_Date::customFormat($result[0]['data']['NOW:']), $result[0]['columns'][3]['val']);
+    $this->assertEquals(\CRM_Utils_Date::customFormat($result[1]['data']['NOW:']), $result[1]['columns'][3]['val']);
+
+    // Check result_row_num
+    $this->assertEquals(1, $result[0]['columns'][1]['val']);
+    $this->assertEquals(2, $result[1]['columns'][1]['val']);
+  }
+
+  public function testLinkConditions() {
+    $activities = $this->saveTestRecords('Activity', [
+      'records' => [
+        ['activity_date_time' => 'now - 1 day'],
+        ['activity_date_time' => 'now + 1 day'],
+      ],
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Activity',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['id'],
+          'where' => [['id', 'IN', $activities->column('id')]],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'testDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'sort' => [['id', 'ASC']],
+          'columns' => [
+            [
+              'type' => 'field',
+              'key' => 'id',
+              'label' => 'ID',
+            ],
+            [
+              'type' => 'buttons',
+              'links' => [
+                [
+                  'entity' => 'Activity',
+                  'task' => 'update',
+                  'icon' => 'fa-pencil',
+                  'condition' => [
+                    'activity_date_time',
+                    '>',
+                    'now',
+                  ],
+                ],
+              ],
+            ],
+          ],
+        ],
+      ],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+
+    // Link should appear for 2nd activity but not the first
+    $this->assertCount(0, $result[0]['columns'][1]['links']);
+    $this->assertCount(1, $result[1]['columns'][1]['links']);
+  }
+
+  public function testLinksWithGroupBy() {
+    $contacts = $this->saveTestRecords('Individual', [
+      'records' => [
+        ['first_name' => 'A', 'last_name' => 'A'],
+        ['first_name' => 'B', 'last_name' => 'B'],
+      ],
+    ]);
+    $contributions = $this->saveTestRecords('Contribution', [
+      'records' => [
+        ['contact_id' => $contacts[0]['id']],
+        ['contact_id' => $contacts[1]['id']],
+      ],
+    ]);
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contribution',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'id',
+            'contact_id',
+            'contact_id.sort_name',
+            'total_amount',
+            'financial_type_id:label',
+          ],
+          'orderBy' => [],
+          'where' => [
+            ['id', 'IN', $contributions->column('id')],
+          ],
+          'groupBy' => [
+            'id',
+          ],
+          'join' => [
+            [
+              'Contact AS Contribution_Contact_contact_id_01',
+              'LEFT',
+              [
+                'contact_id',
+                '=',
+                'Contribution_Contact_contact_id_01.id',
+              ],
+            ],
+          ],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'testDisplay',
+        'settings' => [
+          'description' => NULL,
+          'sort' => [],
+          'limit' => 50,
+          'pager' => [],
+          'placeholder' => 5,
+          'columns' => [
+            [
+              'type' => 'field',
+              'key' => 'id',
+              'dataType' => 'Integer',
+              'label' => 'Contribution ID',
+              'sortable' => TRUE,
+            ],
+            [
+              'type' => 'field',
+              'key' => 'contact_id.sort_name',
+              'dataType' => 'String',
+              'label' => 'Contact Sort Name',
+              'sortable' => TRUE,
+              'link' => [
+                'path' => '',
+                'entity' => 'Contact',
+                'action' => 'view',
+                'join' => 'contact_id',
+                'target' => '',
+              ],
+              'title' => 'View Contact',
+            ],
+            [
+              'type' => 'field',
+              'key' => 'total_amount',
+              'dataType' => 'Money',
+              'label' => 'Total Amount',
+              'sortable' => TRUE,
+            ],
+            [
+              'type' => 'field',
+              'key' => 'financial_type_id:label',
+              'dataType' => 'Integer',
+              'label' => 'Financial Type',
+              'sortable' => TRUE,
+            ],
+          ],
+          'actions' => TRUE,
+          'classes' => [
+            'table',
+            'table-striped',
+          ],
+        ],
+      ],
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+
+    $this->assertCount(1, $result[0]['columns'][1]['links']);
+    $this->assertCount(1, $result[1]['columns'][1]['links']);
   }
 
   public function testContactTypeIcons(): void {
@@ -1498,7 +2479,7 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
       ],
       'display' => [
         'type' => 'table',
-        'label' => '',
+        'label' => 'tesdDisplay',
         'settings' => [
           'actions' => TRUE,
           'pager' => [],
@@ -1527,11 +2508,539 @@ class SearchRunTest extends Api4TestBase implements TransactionalInterface {
 
     // Contacts will be returned in order by sort_name
     $this->assertEquals('Both', $result[0]['columns'][0]['val']);
-    $this->assertEquals('fa-star', $result[0]['columns'][0]['icons'][0]['class']);
+    $this->assertEquals('fa-star', $result[0]['columns'][0]['icons']['left'][0]);
     $this->assertEquals('No icon', $result[1]['columns'][0]['val']);
-    $this->assertEquals('fa-user', $result[1]['columns'][0]['icons'][0]['class']);
+    $this->assertEquals('fa-user', $result[1]['columns'][0]['icons']['left'][0]);
     $this->assertEquals('Starry', $result[2]['columns'][0]['val']);
-    $this->assertEquals('fa-star', $result[2]['columns'][0]['icons'][0]['class']);
+    $this->assertEquals('fa-star', $result[2]['columns'][0]['icons']['left'][0]);
+  }
+
+  public function testKeyIsReturned(): void {
+    $id = $this->createTestRecord('Email')['id'];
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Email',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['email'],
+          'where' => [
+            ['id', 'IN', [$id]],
+          ],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'limit' => 20,
+          'pager' => TRUE,
+          'actions' => TRUE,
+          'columns' => [
+            [
+              'key' => 'email',
+              'label' => 'Email',
+              'dataType' => 'String',
+              'type' => 'field',
+            ],
+          ],
+          'sort' => [
+            ['id', 'ASC'],
+          ],
+        ],
+      ],
+      'afform' => NULL,
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(1, $result);
+    $this->assertEquals($id, $result[0]['key']);
+  }
+
+  public function testRunWithToolbar(): void {
+    $params = [
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contact',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['first_name', 'contact_type'],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'toolbar' => [
+            [
+              'entity' => 'Contact',
+              'action' => 'add',
+              'text' => 'Add Contact',
+              'target' => 'crm-popup',
+              'icon' => 'fa-plus',
+              'style' => 'primary',
+            ],
+          ],
+          'columns' => [
+            [
+              'key' => 'first_name',
+              'label' => 'First',
+              'dataType' => 'String',
+              'type' => 'field',
+            ],
+          ],
+          'sort' => [],
+        ],
+      ],
+      'filters' => ['contact_type' => 'Individual'],
+    ];
+    // No 'add contacts' permission == no "Add contacts" button
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions = [
+      'access CiviCRM',
+      'administer search_kit',
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(0, $result->toolbar);
+    // With 'add contacts' permission the button will be shown
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions[] = 'add contacts';
+    // Clear getLinks cache after changing permissions
+    \Civi::$statics[GetLinks::class] = [];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(1, $result->toolbar);
+    $menu = $result->toolbar[0];
+    $this->assertEquals('Add Contact', $menu['text']);
+    $this->assertEquals('fa-plus', $menu['icon']);
+    $button = $menu['children'][0];
+    $this->assertEquals('fa-user', $button['icon']);
+    $this->assertEquals('Add Individual', $button['text']);
+    $this->assertStringContainsString('=Individual', $button['url']);
+
+    // Try with pseudoconstant (for proper test the label needs to be different from the name)
+    ContactType::update(FALSE)
+      ->addValue('label', 'Disorganization')
+      ->addWhere('name', '=', 'Organization')
+      ->execute();
+    $params['filters'] = ['contact_type:label' => 'Disorganization'];
+    // Use default label this time
+    unset($params['display']['settings']['toolbar'][0]['text']);
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $menu = $result->toolbar[0];
+    $this->assertEquals('Add Disorganization', $menu['text']);
+    $button = $menu['children'][0];
+    $this->assertStringContainsString('=Organization', $button['url']);
+    $this->assertEquals('Add Disorganization', $button['text']);
+
+    // Test legacy 'addButton' setting
+    $params['display']['settings']['toolbar'] = NULL;
+    $params['display']['settings']['addButton'] = [
+      'path' => 'civicrm/test/url?test=[contact_type]',
+      'text' => 'Test',
+      'icon' => 'fa-old',
+      'autoOpen' => TRUE,
+    ];
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(1, $result->toolbar);
+    $button = $result->toolbar[0];
+    $this->assertStringContainsString('test=Organization', $button['url']);
+    $this->assertTrue($button['autoOpen']);
+  }
+
+  public static function toolbarLinkPermissions(): array {
+    $sets = [];
+    $sets[] = [
+      'CONTAINS',
+      ['access CiviCRM', 'administer CiviCRM'],
+      ['access CiviCRM'],
+      TRUE,
+    ];
+    $sets[] = [
+      '=',
+      ['access CiviCRM', 'administer CiviCRM'],
+      ['access CiviCRM'],
+      FALSE,
+    ];
+    $sets[] = [
+      '!=',
+      ['access CiviCRM', 'administer CiviCRM'],
+      ['access CiviCRM'],
+      TRUE,
+    ];
+    $sets[] = [
+      'CONTAINS',
+      ['access CiviCRM', 'administer CiviCRM'],
+      [],
+      FALSE,
+    ];
+    $sets[] = [
+      '=',
+      [],
+      [],
+      TRUE,
+    ];
+    return $sets;
+  }
+
+  /**
+   * @dataProvider toolbarLinkPermissions
+   */
+  public function testToolbarLinksPermissionOperators($linkOperator, $linkPerms, $userPerms, $shouldBeVisible): void {
+    $params = [
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Contact',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['first_name', 'contact_type'],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'actions' => TRUE,
+          'pager' => [],
+          'toolbar' => [
+            [
+              'path' => 'civicrm/test',
+              'text' => 'Test',
+              'condition' => [
+                'check user permission',
+                $linkOperator,
+                $linkPerms,
+              ],
+            ],
+          ],
+          'columns' => [],
+        ],
+      ],
+    ];
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions = array_merge(['administer search_kit'], $userPerms);
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount((int) $shouldBeVisible, $result->toolbar);
+  }
+
+  public function testRunWithEntityFile(): void {
+    $cid = $this->createTestRecord('Contact')['id'];
+    $notes = $this->saveTestRecords('Note', [
+      'records' => 2,
+      'defaults' => ['entity_table' => 'civicrm_contact', 'entity_id' => $cid],
+    ])->column('id');
+
+    foreach (['text/plain' => 'txt', 'image/png' => 'png', 'image/foo' => 'foo'] as $mimeType => $ext) {
+      $file = $this->createTestRecord('File', [
+        'file_name' => 'test_file.' . $ext,
+        'mime_type' => $mimeType,
+        'content' => 'hello',
+      ]);
+      $this->createTestRecord('EntityFile', [
+        'file_id' => $file['id'],
+        'entity_table' => 'civicrm_note',
+        'entity_id' => $notes[0],
+      ]);
+    }
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'debug' => TRUE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Note',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'id',
+            'subject',
+            'note',
+            'note_date',
+            'modified_date',
+            'contact_id.sort_name',
+            'GROUP_CONCAT(UNIQUE Note_EntityFile_File_01.file_name) AS GROUP_CONCAT_Note_EntityFile_File_01_file_name',
+            'GROUP_CONCAT(UNIQUE Note_EntityFile_File_01.url) AS GROUP_CONCAT_Note_EntityFile_File_01_url',
+            'GROUP_CONCAT(UNIQUE Note_EntityFile_File_01.icon) AS GROUP_CONCAT_Note_EntityFile_File_01_icon',
+          ],
+          'where' => [
+            ['entity_id', 'IN', [$cid]],
+            ['entity_table:name', '=', 'Contact'],
+          ],
+          'groupBy' => [
+            'id',
+          ],
+          'join' => [
+            [
+              'File AS Note_EntityFile_File_01',
+              'LEFT',
+              'EntityFile',
+              [
+                'id',
+                '=',
+                'Note_EntityFile_File_01.entity_id',
+              ],
+              [
+                'Note_EntityFile_File_01.entity_table',
+                '=',
+                "'civicrm_note'",
+              ],
+            ],
+          ],
+          'having' => [],
+        ],
+      ],
+      'display' => [
+        'type' => 'table',
+        'label' => 'tesdDisplay',
+        'settings' => [
+          'limit' => 20,
+          'pager' => TRUE,
+          'actions' => TRUE,
+          'columns' => [
+            [
+              'type' => 'field',
+              'key' => 'id',
+              'dataType' => 'Integer',
+              'label' => 'ID',
+              'sortable' => TRUE,
+            ],
+            [
+              'type' => 'field',
+              'key' => 'GROUP_CONCAT_Note_EntityFile_File_01_file_name',
+              'dataType' => 'String',
+              'label' => ts('Attachments'),
+              'sortable' => TRUE,
+              'link' => [
+                'path' => '[GROUP_CONCAT_Note_EntityFile_File_01_url]',
+                'entity' => '',
+                'action' => '',
+                'join' => '',
+                'target' => '',
+              ],
+              'icons' => [
+                [
+                  'field' => 'Note_EntityFile_File_01.icon',
+                  'side' => 'left',
+                ],
+                [
+                  'icon' => 'fa-search',
+                  'side' => 'right',
+                  'if' => ['Note_EntityFile_File_01.is_image'],
+                ],
+              ],
+              'cssRules' => [
+                ['crm-image-popup', 'Note_EntityFile_File_01.is_image', '=', TRUE],
+              ],
+            ],
+          ],
+          'sort' => [
+            ['id', 'ASC'],
+          ],
+        ],
+      ],
+      'afform' => NULL,
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+    $this->assertEquals(['fa-file-text-o', 'fa-file-image-o', 'fa-file-image-o'], $result[0]['columns'][1]['icons']['left']);
+    $this->assertEquals([NULL, 'fa-search', NULL], $result[0]['columns'][1]['icons']['right']);
+    $this->assertEquals(['', 'crm-image-popup', ''], array_column($result[0]['columns'][1]['links'], 'style'));
+    $this->assertEquals(['test_file.txt', 'test_file.png', 'test_file_foo.unknown'], array_column($result[0]['columns'][1]['links'], 'text'));
+  }
+
+  public function testRunWithAddressProximity(): void {
+    require_once __DIR__ . '/../../../../../../../tests/phpunit/CRM/Utils/Geocode/TestProvider.php';
+    $sampleData = [
+      ['geo_code_1' => \CRM_Utils_Geocode_TestProvider::GEO_CODE_1, 'geo_code_2' => \CRM_Utils_Geocode_TestProvider::GEO_CODE_2],
+      ['geo_code_1' => \CRM_Utils_Geocode_TestProvider::GEO_CODE_1 - .05, 'geo_code_2' => \CRM_Utils_Geocode_TestProvider::GEO_CODE_2 + .05],
+      ['geo_code_1' => '0', 'geo_code_2' => '0'],
+    ];
+    $addresses = $this->saveTestRecords('Address', ['records' => $sampleData])
+      ->column('id');
+
+    \Civi\Api4\Setting::set(FALSE)
+      ->addValue('geoProvider', 'TestProvider')
+      ->execute();
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Address',
+        'api_params' => [
+          'version' => 4,
+          // Hack proximity into select clause to allow filter
+          'select' => ['id', 'proximity'],
+          'where' => [
+            ['id', 'IN', $addresses],
+          ],
+        ],
+      ],
+      'display' => NULL,
+      'filters' => ['proximity' => ['distance' => 1000, 'address' => \CRM_Utils_Geocode_TestProvider::ADDRESS]],
+      'afform' => NULL,
+      'debug' => TRUE,
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+    $this->assertCount(2, $result);
+  }
+
+  public function testRunWithTags(): void {
+    $contactId = $this->saveTestRecords('Contact', ['records' => 6])->column('id');
+    $tags = $this->saveTestRecords('Tag', [
+      'records' => [
+        ['label' => uniqid('a')],
+        ['label' => uniqid('b')],
+      ],
+    ]);
+    $tagId = $tags->column('id');
+    $this->saveTestRecords('EntityTag', [
+      'records' => [
+        ['entity_id' => $contactId[0], 'tag_id' => $tagId[0]],
+        ['entity_id' => $contactId[0], 'tag_id' => $tagId[1]],
+        ['entity_id' => $contactId[1], 'tag_id' => $tagId[0]],
+        ['entity_id' => $contactId[2], 'tag_id' => $tagId[1]],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'savedSearch' => [
+        'name' => 'Test_row_number',
+        'label' => 'Test row number',
+        'api_entity' => 'Contact',
+        'api_params' => [
+          'version' => 4,
+          'select' => [
+            'result_row_num',
+            'id',
+            'sort_name',
+            'GROUP_CONCAT(DISTINCT Contact_EntityTag_Tag_01.label) AS GROUP_CONCAT_Contact_EntityTag_Tag_01_label',
+          ],
+          'orderBy' => [],
+          'where' => [
+            ['id', 'IN', $contactId],
+          ],
+          'groupBy' => [
+            'id',
+          ],
+          'join' => [
+            [
+              'Tag AS Contact_EntityTag_Tag_01',
+              'LEFT',
+              'EntityTag',
+              [
+                'id',
+                '=',
+                'Contact_EntityTag_Tag_01.entity_id',
+              ],
+              [
+                'Contact_EntityTag_Tag_01.entity_table',
+                '=',
+                "'civicrm_contact'",
+              ],
+            ],
+          ],
+          'having' => [],
+        ],
+      ],
+      'display' => NULL,
+      'sort' => [
+        ['id', 'ASC'],
+      ],
+      'limit' => 5,
+      'debug' => TRUE,
+    ];
+
+    // Check row count
+    $count = civicrm_api4('SearchDisplay', 'run', ['return' => 'row_count'] + $params);
+    $this->assertCount(6, $count);
+
+    $result = civicrm_api4('SearchDisplay', 'run', ['return' => 'page:1'] + $params);
+    $this->assertCount(5, $result);
+    $row = $result->column('columns');
+
+    $this->assertEquals(1, $row[0][0]['val']);
+    $this->assertEquals($tags->column('label'), $row[0][3]['val']);
+
+    $this->assertEquals(2, $row[1][0]['val']);
+    $this->assertEquals([$tags[0]['label']], $row[1][3]['val']);
+
+    $this->assertEquals(3, $row[2][0]['val']);
+    $this->assertEquals([$tags[1]['label']], $row[2][3]['val']);
+
+    $this->assertEquals(4, $row[3][0]['val']);
+    $this->assertEquals('', $row[3][3]['val']);
+  }
+
+  /**
+   * Returns all contacts in VIEW mode but only specified contact for EDIT.
+   *
+   * @implements CRM_Utils_Hook::aclWhereClause
+   *
+   * @param int $type
+   * @param array $tables
+   * @param array $whereTables
+   * @param int $contactID
+   * @param string|null $where
+   */
+  public function aclViewAllEditOne(int $type, array &$tables, array &$whereTables, int &$contactID, ?string &$where): void {
+    if ($type === \CRM_Core_Permission::VIEW) {
+      $where = ' (1) ';
+    }
+    elseif ($type === \CRM_Core_Permission::EDIT) {
+      $where = ' contact_a.id = ' . $this->allowedContactId;
+    }
+  }
+
+  public function testFormatCustomData(): void {
+    $this->createTestRecord('CustomGroup', [
+      'extends' => 'Individual',
+      'name' => 'test_person_fields',
+    ]);
+    $this->saveTestRecords('CustomField', [
+      'defaults' => ['custom_group_id.name' => 'test_person_fields'],
+      'records' => [
+        ['html_type' => 'Text', 'name' => 'float', 'data_type' => 'Float'],
+        ['html_type' => 'Text', 'name' => 'money', 'data_type' => 'Money'],
+        ['html_type' => 'Text', 'name' => 'bool', 'data_type' => 'Boolean'],
+        ['html_type' => 'Select', 'name' => 'floatopts', 'data_type' => 'Float', 'option_values' => ['1' => 'One', '2' => 'Two']],
+      ],
+    ]);
+
+    $lastName = uniqid(__FUNCTION__);
+    $this->saveTestRecords('Individual', [
+      'defaults' => ['last_name' => $lastName],
+      'records' => [
+        ['test_person_fields.float' => 12345678.89, 'test_person_fields.money' => 12345678.89, 'test_person_fields.floatopts' => 2],
+      ],
+    ]);
+
+    $params = [
+      'checkPermissions' => FALSE,
+      'return' => 'page:1',
+      'savedSearch' => [
+        'api_entity' => 'Individual',
+        'api_params' => [
+          'version' => 4,
+          'select' => ['test_person_fields.float', 'test_person_fields.money', 'test_person_fields.bool', 'test_person_fields.floatopts:label'],
+          'where' => [
+            ['last_name', '=', $lastName],
+          ],
+        ],
+      ],
+      'display' => NULL,
+    ];
+
+    $result = civicrm_api4('SearchDisplay', 'run', $params);
+
+    $this->assertCount(1, $result);
+    $this->assertSame('12,345,678.89', $result[0]['columns'][0]['val']);
+    $this->assertSame('$12,345,678.89', $result[0]['columns'][1]['val']);
+    $this->assertSame('', $result[0]['columns'][2]['val']);
+    $this->assertSame('Two', $result[0]['columns'][3]['val']);
   }
 
 }

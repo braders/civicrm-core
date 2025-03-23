@@ -9,6 +9,8 @@
  +--------------------------------------------------------------------+
  */
 
+use Civi\Api4\DedupeRuleGroup;
+
 /**
  * Trait ParserTrait
  *
@@ -38,7 +40,7 @@ trait CRMTraits_Import_ParserTrait {
       'mapper' => $this->getMapperFromFieldMappings($fieldMappings),
       'dataSource' => 'CRM_Import_DataSource_CSV',
       'file' => ['name' => $csv],
-      'dateFormats' => CRM_Core_Form_Date::DATE_yyyy_mm_dd,
+      'dateFormats' => CRM_Utils_Date::DATE_yyyy_mm_dd,
       'onDuplicate' => CRM_Import_Parser::DUPLICATE_SKIP,
       'groups' => [],
     ], $submittedValues);
@@ -122,7 +124,7 @@ trait CRMTraits_Import_ParserTrait {
       'contactType' => 'Individual',
       'dataSource' => 'CRM_Import_DataSource_CSV',
       'file' => ['name' => $csv],
-      'dateFormats' => CRM_Core_Form_Date::DATE_yyyy_mm_dd,
+      'dateFormats' => CRM_Utils_Date::DATE_yyyy_mm_dd,
       'onDuplicate' => CRM_Import_Parser::DUPLICATE_SKIP,
       'groups' => [],
     ], $submittedValues);
@@ -133,6 +135,46 @@ trait CRMTraits_Import_ParserTrait {
     $this->userJobID = $form->getUserJobID();
     // This gets reset in DataSource so re-do....
     $_SESSION['_' . $form->controller->_name . '_container']['values'] = $values;
+  }
+
+  /**
+   * Enhance field such that any combo of the custom field & first/last name is enough.
+   *
+   * @noinspection PhpUnhandledExceptionInspection
+   */
+  protected function addToDedupeRule(): void {
+    $this->createCustomGroupWithFieldOfType(['extends' => 'Contact']);
+    $dedupeRuleGroup = DedupeRuleGroup::get()
+      ->addWhere('name', '=', 'IndividualUnsupervised')
+      ->addSelect('id', 'threshold')
+      ->execute()
+      ->first();
+    $this->assertEquals(10, $dedupeRuleGroup['threshold']);
+    $dedupeRuleGroupID = $this->ids['DedupeRule']['unsupervised'] = $dedupeRuleGroup['id'];
+    $this->callAPISuccess('Rule', 'create', [
+      'dedupe_rule_group_id' => $dedupeRuleGroupID,
+      'rule_weight' => 5,
+      'rule_table' => $this->getCustomGroupTable(),
+      'rule_field' => $this->getCustomFieldColumnName('text'),
+    ]);
+    $this->callAPISuccess('Rule', 'create', [
+      'dedupe_rule_group_id' => $dedupeRuleGroupID,
+      'rule_weight' => 5,
+      'rule_table' => 'civicrm_contact',
+      'rule_field' => 'first_name',
+    ]);
+    $this->callAPISuccess('Rule', 'create', [
+      'dedupe_rule_group_id' => $dedupeRuleGroupID,
+      'rule_weight' => 5,
+      'rule_table' => 'civicrm_contact',
+      'rule_field' => 'last_name',
+    ]);
+    $this->createTestEntity('DedupeRule', [
+      'dedupe_rule_group_id' => $dedupeRuleGroupID,
+      'rule_weight' => 5,
+      'rule_table' => 'civicrm_address',
+      'rule_field' => 'street_address',
+    ]);
   }
 
 }

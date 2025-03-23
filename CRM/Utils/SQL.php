@@ -52,27 +52,64 @@ class CRM_Utils_SQL {
   /**
    * Helper function for adding the permissioned subquery from one entity onto another
    *
-   * @param string $entity
+   * @param string $entityName
    * @param string $joinColumn
    * @return array
    */
-  public static function mergeSubquery($entity, $joinColumn = 'id') {
-    require_once 'api/v3/utils.php';
-    $baoName = _civicrm_api3_get_BAO($entity);
+  public static function mergeSubquery($entityName, $joinColumn = 'id') {
+    $baoName = CRM_Core_DAO_AllCoreTables::getBAOClassName(CRM_Core_DAO_AllCoreTables::getDAONameForEntity($entityName));
     $bao = new $baoName();
-    $clauses = $subclauses = [];
-    foreach ((array) $bao->addSelectWhereClause() as $field => $vals) {
-      if ($vals && $field == $joinColumn) {
-        $clauses = array_merge($clauses, (array) $vals);
-      }
-      elseif ($vals) {
-        $subclauses[] = "$field " . implode(" AND $field ", (array) $vals);
+    $fields = $bao::getSupportedFields();
+    $fieldNames = array_keys($fields);
+    $mergeClauses = $subClauses = [];
+    foreach ($bao->addSelectWhereClause($entityName) as $fieldName => $fieldClauses) {
+      if ($fieldClauses) {
+        foreach ((array) $fieldClauses as $fieldClause) {
+          $originalClause = $fieldClause;
+          CRM_Utils_SQL::prefixFieldNames($fieldClause, $fieldNames, $bao->tableName());
+          // Same as join column with no additional fields - can be added directly
+          if ($fieldName === $joinColumn && $originalClause === $fieldClause) {
+            $mergeClauses[] = $fieldClause;
+          }
+          // Arrays of arrays get joined with OR (similar to CRM_Core_Permission::check)
+          elseif (is_array($fieldClause)) {
+            $subClauses[] = "(($fieldName " . implode(") OR ($fieldName ", $fieldClause) . '))';
+          }
+          else {
+            $subClauses[] = "$fieldName $fieldClause";
+          }
+        }
       }
     }
-    if ($subclauses) {
-      $clauses[] = "IN (SELECT `$joinColumn` FROM `" . $bao->tableName() . "` WHERE " . implode(' AND ', $subclauses) . ")";
+    if ($subClauses) {
+      $mergeClauses[] = "IN (SELECT `$joinColumn` FROM `" . $bao->tableName() . "` WHERE " . implode(' AND ', $subClauses) . ")";
     }
-    return $clauses;
+    return $mergeClauses;
+  }
+
+  /**
+   * Walk a nested array and replace "{field_name}" with "`tableAlias`.`field_name`"
+   *
+   * @param string|array $clause
+   * @param array $fieldNames
+   * @param string $tableAlias
+   * @return string|array
+   */
+  public static function prefixFieldNames(&$clause, array $fieldNames, string $tableAlias) {
+    if (is_array($clause)) {
+      foreach ($clause as $index => $subclause) {
+        $clause[$index] = self::prefixFieldNames($subclause, $fieldNames, $tableAlias);
+      }
+    }
+    if (is_string($clause) && str_contains($clause, '{')) {
+      $find = $replace = [];
+      foreach ($fieldNames as $fieldName) {
+        $find[] = '{' . $fieldName . '}';
+        $replace[] = '`' . $tableAlias . '`.`' . $fieldName . '`';
+      }
+      $clause = str_replace($find, $replace, $clause);
+    }
+    return $clause;
   }
 
   /**
@@ -136,36 +173,18 @@ class CRM_Utils_SQL {
   }
 
   /**
-   * Does the DB version support mutliple locks per
-   *
-   * https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_get-lock
-   *
-   * This is a conservative measure to introduce the change which we expect to deprecate later.
-   *
-   * @todo we only check mariadb & mysql right now but maybe can add percona.
-   */
-  public static function supportsMultipleLocks() {
-    static $isSupportLocks = NULL;
-    if (!isset($isSupportLocks)) {
-      $version = self::getDatabaseVersion();
-      if (stripos($version, 'mariadb') !== FALSE) {
-        $isSupportLocks = version_compare($version, '10.0.2', '>=');
-      }
-      else {
-        $isSupportLocks = version_compare($version, '5.7.5', '>=');
-      }
-    }
-
-    return $isSupportLocks;
-  }
-
-  /**
    * Get the version string for the database.
    *
    * @return string
    */
   public static function getDatabaseVersion() {
     return CRM_Core_DAO::singleValueQuery('SELECT VERSION()');
+  }
+
+  public static function connect($dsn) {
+    $dsn = CRM_Utils_SQL::autoSwitchDSN($dsn);
+    $options = CRM_Utils_SQL::isSSLDSN($dsn) ? ['ssl' => TRUE] : [];
+    return DB::connect($dsn, $options);
   }
 
   /**

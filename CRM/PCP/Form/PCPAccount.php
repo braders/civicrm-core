@@ -36,6 +36,20 @@ class CRM_PCP_Form_PCPAccount extends CRM_Core_Form {
   public $_single;
 
   /**
+   * The ID of the logged in contact (if the user is logged in)
+   *
+   * @var int|null
+   */
+  public $_contactID = NULL;
+
+  /**
+   * Array of fields
+   *
+   * @var array
+   */
+  public $_fields = [];
+
+  /**
    * Get the active UFGroups (profiles) on this form
    * Many forms load one or more UFGroups (profiles).
    * This provides a standard function to retrieve the IDs of those profiles from the form
@@ -125,7 +139,7 @@ class CRM_PCP_Form_PCPAccount extends CRM_Core_Form {
           CRM_Core_Action::DELETE => [
             'name' => ts('Delete Contact Image'),
             'url' => 'civicrm/contact/image',
-            'qs' => 'reset=1&cid=' . $this->_contactID . '&action=delete',
+            'qs' => 'reset=1&cid=%%id%%&action=delete&qfKey=%%key%%&pcp=1',
             'extra' => 'onclick = "' . htmlspecialchars("if (confirm($deleteExtra)) this.href+='&confirmed=1'; else return false;") . '"',
           ],
         ];
@@ -133,6 +147,7 @@ class CRM_PCP_Form_PCPAccount extends CRM_Core_Form {
           CRM_Core_Action::DELETE,
           [
             'id' => $this->_contactID,
+            'key' => $this->controller->_key,
           ],
           ts('more'),
           FALSE,
@@ -249,7 +264,7 @@ class CRM_PCP_Form_PCPAccount extends CRM_Core_Form {
   public static function formRule($fields, $files, $self) {
     $errors = [];
     foreach ($fields as $key => $value) {
-      if (strpos($key, 'email-') !== FALSE && !empty($value)) {
+      if (str_contains($key, 'email-') && !empty($value)) {
         $ufContactId = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_UFMatch', $value, 'contact_id', 'uf_name');
         if ($ufContactId && $ufContactId != $self->_contactID) {
           $errors[$key] = ts('There is already an user associated with this email address. Please enter different email address.');
@@ -295,8 +310,13 @@ class CRM_PCP_Form_PCPAccount extends CRM_Core_Form {
     if (!empty($params['image_URL'])) {
       CRM_Contact_BAO_Contact::processImageParams($params);
     }
-
-    $contactID = CRM_Contact_BAO_Contact::createProfileContact($params, $this->_fields, $this->_contactID);
+    $ufGroupID = CRM_PCP_BAO_PCP::getSupporterProfileId($this->_pageId, $this->_component);
+    $addToGroupId = \Civi\Api4\UFGroup::get(FALSE)
+      ->addSelect('add_to_group_id')
+      ->addWhere('id', '=', $ufGroupID)
+      ->execute()
+      ->first()['add_to_group_id'] ?? NULL;
+    $contactID = CRM_Contact_BAO_Contact::createProfileContact($params, $this->_fields, $this->_contactID, $addToGroupId);
     $this->set('contactID', $contactID);
 
     if (!empty($params['email'])) {

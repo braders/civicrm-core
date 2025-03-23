@@ -38,6 +38,11 @@ else {
      */
     private $tx;
 
+    /**
+     * @var \CRM_Core_TemporaryErrorScope|null
+     */
+    public $errorScope;
+
     public function startTestSuite(\PHPUnit\Framework\TestSuite $suite) {
       $byInterface = $this->indexTestsByInterface($suite->tests());
       $this->validateGroups($byInterface);
@@ -93,6 +98,7 @@ else {
       \CRM_Utils_Time::resetTime();
       if ($this->isCiviTest($test)) {
         unset($GLOBALS['CIVICRM_TEST_CASE']);
+        unset($_SERVER['HTTP_X_REQUESTED_WITH']); /* Several tests neglect to clean this up... */
         error_reporting(E_ALL & ~E_NOTICE);
         $this->errorScope = NULL;
       }
@@ -121,6 +127,7 @@ else {
       \CRM_Core_Session::singleton()->set('userID', NULL);
       // ugh, performance
       $config = \CRM_Core_Config::singleton(TRUE, TRUE);
+      $config->userSystem->setMySQLTimeZone();
 
       if (property_exists($config->userPermissionClass, 'permissions')) {
         $config->userPermissionClass->permissions = NULL;
@@ -256,20 +263,20 @@ else {
       foreach ($byInterface['HeadlessInterface'] as $className => $nonce) {
         $clazz = new \ReflectionClass($className);
         $docComment = str_replace("\r\n", "\n", $clazz->getDocComment());
-        if (strpos($docComment, "@group headless\n") === FALSE) {
+        if (!str_contains($docComment, "@group headless\n")) {
           echo "WARNING: Class $className implements HeadlessInterface. It should declare \"@group headless\".\n";
         }
-        if (strpos($docComment, "@group e2e\n") !== FALSE) {
+        if (str_contains($docComment, "@group e2e\n")) {
           echo "WARNING: Class $className implements HeadlessInterface. It should not declare \"@group e2e\".\n";
         }
       }
       foreach ($byInterface['EndToEndInterface'] as $className => $nonce) {
         $clazz = new \ReflectionClass($className);
         $docComment = str_replace("\r\n", "\n", $clazz->getDocComment());
-        if (strpos($docComment, "@group e2e\n") === FALSE) {
+        if (!str_contains($docComment, "@group e2e\n")) {
           echo "WARNING: Class $className implements EndToEndInterface. It should declare \"@group e2e\".\n";
         }
-        if (strpos($docComment, "@group headless\n") !== FALSE) {
+        if (str_contains($docComment, "@group headless\n")) {
           echo "WARNING: Class $className implements EndToEndInterface. It should not declare \"@group headless\".\n";
         }
       }

@@ -137,17 +137,19 @@ class ClassScanner {
 
     $civicrmRoot = \Civi::paths()->getPath('[civicrm.root]/');
 
-    // TODO: Consider expanding this search.
+    // Scan all core classes that might implement an interface we're looking for.
+    // Excludes internal and legacy classes, upgraders, pages & other classes that don't need to be scanned.
     $classes = [];
     static::scanFolders($classes, $civicrmRoot, 'Civi/Test/ExampleData', '\\');
-    static::scanFolders($classes, $civicrmRoot, 'CRM/*/WorkflowMessage', '_');
-    static::scanFolders($classes, $civicrmRoot, 'CRM/*/Import', '_');
+
+    // We skip scanning for some files+folders from core, for a few reasons:
+    // (1) Save time. Many older classes in `CRM_*` (esp `Page`, `Controller`, `DAO`) have lifecycles which don't need scanning.
+    // (2) Avoid dead classes. In a couple cases (`Cxn`, `Dedupe_BAO`), it mitigates Joomla upgrade issue dev/core#5787.
+    static::scanFolders($classes, $civicrmRoot, 'CRM', '_', ';(Upgrade|Utils|Exception|_DAO|_Page|_Form|_Controller|_StateMachine|_Selector|_CodeGen|_Cxn|_QuickForm|CRM_Dedupe_BAO_QueryBuilder);');
     static::scanFolders($classes, $civicrmRoot, 'Civi', '\\', ';\\\(Security|Test)\\\;');
-    if (\CRM_Utils_Constant::value('CIVICRM_UF') === 'UnitTests') {
-      if (strpos(get_include_path(), $civicrmRoot . 'tests/phpunit') !== FALSE) {
-        static::scanFolders($classes, $civicrmRoot . 'tests/phpunit', 'CRM/*/WorkflowMessage', '_');
-        static::scanFolders($classes, $civicrmRoot . 'tests/phpunit', 'Civi/*/WorkflowMessage', '\\');
-      }
+
+    if (CIVICRM_UF === 'UnitTests') {
+      static::scanFolders($classes, $civicrmRoot . 'tests/phpunit', 'Civi/Api4', '\\');
     }
 
     $cache->set($cacheKey, $classes, static::TTL);

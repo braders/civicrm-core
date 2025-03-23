@@ -43,7 +43,6 @@ class CRM_Case_Page_Tab extends CRM_Core_Page {
     }
 
     $this->_id = CRM_Utils_Request::retrieve('id', 'Positive', $this);
-    $this->_context = CRM_Utils_Request::retrieve('context', 'Alphanumeric', $this);
 
     if ($this->_contactId) {
       $this->assign('contactId', $this->_contactId);
@@ -59,11 +58,6 @@ class CRM_Case_Page_Tab extends CRM_Core_Page {
       }
       else {
         CRM_Contact_Page_View::checkUserPermission($this);
-      }
-    }
-    else {
-      if ($this->_action & CRM_Core_Action::VIEW) {
-        CRM_Core_Error::statusBounce(ts('Contact Id is required for view action.'));
       }
     }
 
@@ -161,7 +155,7 @@ class CRM_Case_Page_Tab extends CRM_Core_Page {
    * @return null
    */
   public function run() {
-    $contactID = CRM_Utils_Request::retrieve('cid', 'Positive', CRM_Core_DAO::$_nullArray);
+    $contactID = CRM_Utils_Request::retrieve('cid', 'Positive');
     $context = CRM_Utils_Request::retrieve('context', 'Alphanumeric', $this);
 
     if ($context == 'standalone' && !$contactID) {
@@ -201,10 +195,8 @@ class CRM_Case_Page_Tab extends CRM_Core_Page {
    *   (reference) of action links
    */
   public static function &links() {
-    $config = CRM_Core_Config::singleton();
 
     if (!(self::$_links)) {
-      $deleteExtra = ts('Are you sure you want to delete this case?');
       self::$_links = [
         CRM_Core_Action::VIEW => [
           'name' => ts('Manage'),

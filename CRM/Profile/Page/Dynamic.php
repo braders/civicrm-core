@@ -199,26 +199,26 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
       $session = CRM_Core_Session::singleton();
       $userID = $session->get('userID');
 
-      $this->_isPermissionedChecksum = $allowPermission = FALSE;
+      $isPermissionedChecksum = $allowPermission = FALSE;
       $permissionType = CRM_Core_Permission::VIEW;
-      if (CRM_Core_Permission::check('administer users') || CRM_Core_Permission::check('view all contacts') || CRM_Contact_BAO_Contact_Permission::allow($this->_id)) {
+      if (CRM_Core_Permission::check('cms:administer users') || CRM_Core_Permission::check('view all contacts') || CRM_Contact_BAO_Contact_Permission::allow($this->_id)) {
         $allowPermission = TRUE;
       }
       if ($this->_id != $userID) {
         // do not allow edit for anon users in joomla frontend, CRM-4668, unless u have checksum CRM-5228
         if ($config->userFrameworkFrontend) {
-          $this->_isPermissionedChecksum = CRM_Contact_BAO_Contact_Permission::validateOnlyChecksum($this->_id, $this, FALSE);
-          if (!$this->_isPermissionedChecksum) {
-            $this->_isPermissionedChecksum = $allowPermission;
+          $isPermissionedChecksum = CRM_Contact_BAO_Contact_Permission::validateOnlyChecksum($this->_id, $this, FALSE);
+          if (!$isPermissionedChecksum) {
+            $isPermissionedChecksum = $allowPermission;
           }
         }
         else {
-          $this->_isPermissionedChecksum = CRM_Contact_BAO_Contact_Permission::validateChecksumContact($this->_id, $this, FALSE);
+          $isPermissionedChecksum = CRM_Contact_BAO_Contact_Permission::validateChecksumContact($this->_id, $this, FALSE);
         }
       }
       // CRM-10853
       // Users with create or edit permission should be allowed to view their own profile
-      if ($this->_id == $userID || $this->_isPermissionedChecksum) {
+      if ($this->_id == $userID || $isPermissionedChecksum) {
         if (!CRM_Core_Permission::check('profile view')) {
           if (CRM_Core_Permission::check('profile create') || CRM_Core_Permission::check('profile edit')) {
             $this->_skipPermission = TRUE;
@@ -230,7 +230,7 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
       $admin = FALSE;
       if ((!$config->userFrameworkFrontend && $allowPermission) ||
         $this->_id == $userID ||
-        $this->_isPermissionedChecksum
+        $isPermissionedChecksum
       ) {
         $admin = TRUE;
       }
@@ -256,7 +256,7 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
       //reformat fields array
       foreach ($fields as $name => $field) {
         // also eliminate all formatting fields
-        if (CRM_Utils_Array::value('field_type', $field) == 'Formatting') {
+        if (($field['field_type'] ?? NULL) == 'Formatting') {
           unset($fields[$name]);
         }
 
@@ -270,7 +270,7 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
         $contactFields = $activityFields = [];
 
         foreach ($fields as $fieldName => $field) {
-          if (CRM_Utils_Array::value('field_type', $field) == 'Activity') {
+          if (($field['field_type'] ?? NULL) == 'Activity') {
             $activityFields[$fieldName] = $field;
           }
           else {
@@ -339,8 +339,8 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
         ];
       }
 
-      $template->assign_by_ref('row', $values);
-      $template->assign_by_ref('profileFields', $profileFields);
+      $template->assign('row', $values);
+      $template->assign('profileFields', $profileFields);
     }
 
     $name = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_UFGroup', $this->_gid, 'name');
@@ -420,7 +420,7 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
    */
   public function getTemplateFileName() {
     $fileName = $this->checkTemplateFileExists();
-    return $fileName ? $fileName : parent::getTemplateFileName();
+    return $fileName ?: parent::getTemplateFileName();
   }
 
   /**
@@ -431,7 +431,7 @@ class CRM_Profile_Page_Dynamic extends CRM_Core_Page {
    */
   public function overrideExtraTemplateFileName() {
     $fileName = $this->checkTemplateFileExists('extra.');
-    return $fileName ? $fileName : parent::overrideExtraTemplateFileName();
+    return $fileName ?: parent::overrideExtraTemplateFileName();
   }
 
   /**

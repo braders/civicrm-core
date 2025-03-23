@@ -1,5 +1,7 @@
 <?php
 
+use Civi\Api4\CaseType;
+
 /**
  * Case Types support an optional forking mechanism wherein the local admin
  * creates a custom DB-based definition that deviates from the file-based definition.
@@ -13,14 +15,16 @@ class CRM_Case_BAO_CaseTypeForkTest extends CiviCaseTestCase {
   }
 
   public function tearDown(): void {
+    CaseType::delete(FALSE)
+      ->addWhere('name', 'IN', ['UnforkableCaseType', 'ForkableCaseType'])
+      ->execute();
     parent::tearDown();
-    CRM_Core_ManagedEntities::singleton(TRUE)->reconcile();
   }
 
   /**
    * Test Manager contact is correctly assigned via case type def.
    */
-  public function testManagerContact() {
+  public function testManagerContact(): void {
     $caseTypeId = CRM_Core_DAO::getFieldValue('CRM_Case_DAO_CaseType', 'ForkableCaseType', 'id', 'name');
     $this->assertTrue(is_numeric($caseTypeId) && $caseTypeId > 0);
 
@@ -45,7 +49,7 @@ class CRM_Case_BAO_CaseTypeForkTest extends CiviCaseTestCase {
   /**
    * Edit the definition of ForkableCaseType.
    */
-  public function testForkable() {
+  public function testForkable(): void {
     $caseTypeId = CRM_Core_DAO::getFieldValue('CRM_Case_DAO_CaseType', 'ForkableCaseType', 'id', 'name');
     $this->assertTrue(is_numeric($caseTypeId) && $caseTypeId > 0);
 
@@ -80,7 +84,7 @@ class CRM_Case_BAO_CaseTypeForkTest extends CiviCaseTestCase {
   /**
    * Attempt to edit the definition of UnforkableCaseType. This fails.
    */
-  public function testUnforkable() {
+  public function testUnforkable(): void {
     $caseTypeId = CRM_Core_DAO::getFieldValue('CRM_Case_DAO_CaseType', 'UnforkableCaseType', 'id', 'name');
     $this->assertTrue(is_numeric($caseTypeId) && $caseTypeId > 0);
     $this->assertDBNull('CRM_Case_BAO_CaseType', $caseTypeId, 'definition', 'id', "Should not have DB-based definition");

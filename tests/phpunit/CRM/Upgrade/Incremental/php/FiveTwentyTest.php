@@ -11,7 +11,7 @@ class CRM_Upgrade_Incremental_php_FiveTwentyTest extends CiviCaseTestCase {
    * Test that the upgrade task changes the direction but only
    * for bidirectional relationship types that are b_a.
    */
-  public function testChangeCaseTypeAutoassignee() {
+  public function testChangeCaseTypeAutoassignee(): void {
 
     // We don't know what the ids are for the relationship types since it
     // seems to depend what ran before us, so retrieve them first and go by
@@ -157,14 +157,11 @@ class CRM_Upgrade_Incremental_php_FiveTwentyTest extends CiviCaseTestCase {
 
 ENDXML;
 
-    $dao = new CRM_Case_DAO_CaseType();
-    $dao->name = 'test_type';
-    $dao->title = 'Test Type';
-    $dao->is_active = 1;
-    $dao->definition = $newCaseTypeXml;
-    $dao->insert();
-
-    $caseTypeId = $dao->id;
+    $this->createTestEntity('CaseType', [
+      'name' => 'test_type',
+      'title' => 'Test type',
+    ], 'new');
+    CRM_Core_DAO::executeQuery("UPDATE civicrm_case_type SET definition = '" . $newCaseTypeXml . "' WHERE name = 'test_type'");
 
     // run the task
     $upgrader = new CRM_Upgrade_Incremental_php_FiveTwenty();
@@ -181,7 +178,7 @@ ENDXML;
     //echo $expectedCaseTypeXml;
 
     // Get the updated case type and check.
-    $dao = CRM_Core_DAO::executeQuery("SELECT definition FROM civicrm_case_type WHERE id = {$caseTypeId}");
+    $dao = CRM_Core_DAO::executeQuery("SELECT definition FROM civicrm_case_type WHERE id = " . $this->ids['CaseType']['new']);
     $dao->fetch();
 
     $this->assertEquals($expectedCaseTypeXml, $dao->definition);
@@ -191,7 +188,7 @@ ENDXML;
    * Test that the upgrade task converts case role <name>'s that
    * are labels to their name.
    */
-  public function testConvertRoleLabelsToNames() {
+  public function testConvertRoleLabelsToNames(): void {
 
     // We don't know what the ids are for the relationship types since it
     // seems to depend what ran before us, so retrieve them first and go by
@@ -923,16 +920,16 @@ ENDXMLDIFFNAMEEXPECTED;
    * @param string $xml
    *
    * @return int
+   * @throws \Civi\Core\Exception\DBQueryException
    */
-  private function addCaseType($name, $xml) {
-    $dao = new CRM_Case_DAO_CaseType();
-    $dao->name = $name;
-    $dao->title = $name;
-    $dao->is_active = 1;
-    $dao->definition = $xml;
-    $dao->insert();
+  private function addCaseType(string $name, string $xml): int {
+    $this->createTestEntity('CaseType', [
+      'name' => $name,
+      'title' => $name,
+    ], $name);
+    CRM_Core_DAO::executeQuery("UPDATE civicrm_case_type SET definition = '" . $xml . "' WHERE name = '" . $name . "'");
 
-    return $dao->id;
+    return $this->ids['CaseType'][$name];
   }
 
 }

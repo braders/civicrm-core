@@ -12,14 +12,15 @@
 
     this.download = function() {
       ctrl.progress = 0;
-      $('.ui-dialog-titlebar button').hide();
+      // Hide dialog-titlebar buttons so the user doesn't close the dialog
+      $('div.ui-dialog').last().find('.ui-dialog-titlebar .ui-button').hide();
       // Show the user something is happening (even though it doesn't accurately reflect progress)
       var incrementer = $interval(function() {
         if (ctrl.progress < 90) {
           ctrl.progress += 10;
         }
       }, 1000);
-      var apiParams = ctrl.displayController.getApiParams();
+      var apiParams = ctrl.taskManager.getApiParams();
       delete apiParams.return;
       delete apiParams.limit;
       apiParams.filters.id = ctrl.ids || null;

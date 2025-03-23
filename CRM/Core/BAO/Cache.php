@@ -59,6 +59,9 @@ class CRM_Core_BAO_Cache extends CRM_Core_DAO_Cache {
    *   Should session state be reset on completion of DB store?.
    */
   public static function storeSessionToCache($names, $resetSession = TRUE) {
+    \Civi::dispatcher()->dispatch('civi.session.storeObjects', \Civi\Core\Event\GenericHookEvent::create([
+      'names' => &$names,
+    ]));
     foreach ($names as $key => $sessionName) {
       if (is_array($sessionName)) {
         $value = NULL;
@@ -99,9 +102,12 @@ class CRM_Core_BAO_Cache extends CRM_Core_DAO_Cache {
   /**
    * Restore session from cache.
    *
-   * @param string $names
+   * @param array $names
    */
   public static function restoreSessionFromCache($names) {
+    \Civi::dispatcher()->dispatch('civi.session.restoreObjects', \Civi\Core\Event\GenericHookEvent::create([
+      'names' => &$names,
+    ]));
     foreach ($names as $key => $sessionName) {
       if (is_array($sessionName)) {
         $value = Civi::cache('session')->get("{$sessionName[0]}_{$sessionName[1]}");
@@ -135,7 +141,7 @@ class CRM_Core_BAO_Cache extends CRM_Core_DAO_Cache {
         'CRM_Event_Controller_Registration',
       ];
       foreach ($transactionPages as $transactionPage) {
-        if (strpos($sessionKey, $transactionPage) !== FALSE) {
+        if (str_contains($sessionKey, $transactionPage)) {
           return $secureSessionTimeoutMinutes * 60;
         }
       }
@@ -213,7 +219,7 @@ class CRM_Core_BAO_Cache extends CRM_Core_DAO_Cache {
   public static function decode($string) {
     // Upgrade support -- old records (serialize) always have this punctuation,
     // and new records (base64) never do.
-    if (strpos($string, ':') !== FALSE || strpos($string, ';') !== FALSE) {
+    if (str_contains($string, ':') || str_contains($string, ';')) {
       return unserialize($string);
     }
     else {

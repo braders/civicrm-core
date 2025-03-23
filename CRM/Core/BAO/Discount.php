@@ -78,9 +78,31 @@ class CRM_Core_BAO_Discount extends CRM_Core_DAO_Discount {
     $dao->entity_table = $entityTable;
     $dao->find();
     while ($dao->fetch()) {
-      $optionGroupIDs[$dao->id] = $dao->price_set_id;
+      $optionGroupIDs[$dao->id] = (int) $dao->price_set_id;
     }
     return $optionGroupIDs;
+  }
+
+  /**
+   * Pseudoconstant condition_provider for price_set_id field.
+   * @see \Civi\Schema\EntityMetadataBase::getConditionFromProvider
+   */
+  public static function alterPriceSetOptions(string $fieldName, CRM_Utils_SQL_Select $conditions, $params) {
+    if (!empty($params['values']['entity_table']) && !empty($params['values']['entity_id'])) {
+      $priceSetIds = self::getOptionGroup($params['values']['entity_id'], $params['values']['entity_table']);
+      $conditions->where('id IN (#ids)', ['ids' => $priceSetIds ?: 0]);
+    }
+  }
+
+  /**
+   * Whitelist of possible values for the entity_table field
+   *
+   * @return array
+   */
+  public static function entityTables(): array {
+    return [
+      'civicrm_event' => ts('Event'),
+    ];
   }
 
   /**

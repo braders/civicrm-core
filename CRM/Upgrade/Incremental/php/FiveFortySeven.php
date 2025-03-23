@@ -101,9 +101,11 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
    */
   public static function migrateCiviGrant(CRM_Queue_TaskContext $ctx): bool {
     $civiGrantEnabled = CRM_Core_Component::isEnabled('CiviGrant');
-    if ($civiGrantEnabled) {
-      CRM_Core_BAO_ConfigSetting::disableComponent('CiviGrant');
-    }
+    // This was failing on multi-domain setups. See  https://github.com/civicrm/civicrm-core/pull/26043
+    // Instead, we'll handle it in FiveSixtyTwo::consolidateComponents.
+    //  if ($civiGrantEnabled) {
+    //    CRM_Core_BAO_ConfigSetting::disableComponent('CiviGrant');
+    //  }
     $civiGrantId = CRM_Core_DAO::getFieldValue('CRM_Core_DAO_Component', 'CiviGrant', 'id', 'name');
     if ($civiGrantId) {
       foreach (['civicrm_menu', 'civicrm_option_value'] as $table) {
@@ -113,7 +115,7 @@ class CRM_Upgrade_Incremental_php_FiveFortySeven extends CRM_Upgrade_Incremental
     }
     // Reload the civi cache here as 'table_name' may not be in the cached entities
     // array generated in an earlier version retrieved via $cache->get('api4.entities.info', []);
-    Civi::cache('metadata')->flush();
+    Civi::cache('metadata')->clear();
 
     // There are existing records which should be managed by `civigrant`. To assign ownership, we need
     // placeholders in `civicrm_extension` and `civicrm_managed`.

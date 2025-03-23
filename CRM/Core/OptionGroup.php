@@ -19,23 +19,21 @@ class CRM_Core_OptionGroup {
   public static $_cache = [];
 
   /**
-   * $_domainIDGroups array maintains the list of option groups for whom
-   * domainID is to be considered.
+   * Deprecated flag for domain-specific optionValues. The `is_domain` column is no longer used.
+   * Any set of options that needs domain specificity should be stored in its own table.
    *
-   * FIXME: Hardcoded list = bad. It would be better to make this a column in the civicrm_option_group table
    * @var array
+   * @deprecated
    */
-  public static $_domainIDGroups = [
-    'from_email_address',
-    'grant_type',
-  ];
+  public static $_domainIDGroups = [];
 
   /**
+   * @deprecated - going forward the optionValue table will not support domain-specific options
    * @param $groupName
    * @return bool
    */
   public static function isDomainOptionGroup($groupName) {
-    return in_array($groupName, self::$_domainIDGroups, TRUE);
+    return FALSE;
   }
 
   /**
@@ -116,8 +114,10 @@ class CRM_Core_OptionGroup {
     $orderBy = 'weight'
   ) {
 
-    if (self::isDomainOptionGroup($name)) {
-      $cacheKey = self::createCacheKey($name, CRM_Core_I18n::getLocale(), $flip, $grouping, $localize, $condition, $labelColumnName, $onlyActive, $keyColumnName, $orderBy, CRM_Core_Config::domainID());
+    // Legacy shim for option group that's been moved to its own table
+    if ($name === 'from_email_address') {
+      $options = self::getLegacyFromEmailAddressValues((bool) $onlyActive, $condition, $labelColumnName, $keyColumnName);
+      return $options;
     }
     else {
       $cacheKey = self::createCacheKey($name, CRM_Core_I18n::getLocale(), $flip, $grouping, $localize, $condition, $labelColumnName, $onlyActive, $keyColumnName, $orderBy);
@@ -145,24 +145,24 @@ WHERE  v.option_group_id = g.id
       $query .= ' AND  v.is_active = 1 ';
       // Only show options for enabled components
       $componentClause = ' v.component_id IS NULL ';
-      $enabledComponents = CRM_Core_Config::singleton()->enableComponents;
+      $enabledComponents = Civi::settings()->get('enable_components');
       if ($enabledComponents) {
         $enabledComponents = '"' . implode('","', $enabledComponents) . '"';
         $componentClause .= " OR v.component_id IN (SELECT id FROM civicrm_component WHERE name IN ($enabledComponents)) ";
       }
       $query .= " AND ($componentClause) ";
     }
-    if (self::isDomainOptionGroup($name)) {
-      $query .= ' AND v.domain_id = ' . CRM_Core_Config::domainID();
-    }
 
     if ($condition) {
       $query .= $condition;
     }
 
-    $query .= " ORDER BY v.{$orderBy}";
+    $query .= " ORDER BY %2";
 
-    $p = [1 => [$name, 'String']];
+    $p = [
+      1 => [$name, 'String'],
+      2 => ['v.' . $orderBy, 'MysqlOrderBy'],
+    ];
     $dao = CRM_Core_DAO::executeQuery($query, $p);
 
     $var = self::valuesCommon($dao, $flip, $grouping, $localize, $labelColumnName);
@@ -279,7 +279,8 @@ WHERE  v.option_group_id = g.id
   public static function lookupValues(&$params, $names, $flip = FALSE) {
     foreach ($names as $postName => $value) {
       // See if $params field is in $names array (i.e. is a value that we need to lookup)
-      if ($postalName = CRM_Utils_Array::value($postName, $params)) {
+      $postalName = $params[$postName] ?? NULL;
+      if ($postalName) {
         $postValues = [];
         // params[$postName] may be a Ctrl+A separated value list
         if (is_string($postalName) &&
@@ -329,94 +330,6 @@ WHERE  v.option_group_id = g.id
   }
 
   /**
-   * @deprecated - use CRM_Core_PseudoConstant::getLabel
-   *
-   * @param string $groupName
-   * @param $value
-   * @param bool $onlyActiveValue
-   *
-   * @return null
-   */
-  public static function getLabel($groupName, $value, $onlyActiveValue = TRUE) {
-    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_PseudoConstant::getLabel');
-    if (empty($groupName) ||
-      empty($value)
-    ) {
-      return NULL;
-    }
-
-    $query = "
-SELECT  v.label as label ,v.value as value
-FROM   civicrm_option_value v,
-       civicrm_option_group g
-WHERE  v.option_group_id = g.id
-  AND  g.name            = %1
-  AND  g.is_active       = 1
-  AND  v.value           = %2
-";
-    if ($onlyActiveValue) {
-      $query .= " AND  v.is_active = 1 ";
-    }
-    $p = [
-      1 => [$groupName, 'String'],
-      2 => [$value, 'Integer'],
-    ];
-    $dao = CRM_Core_DAO::executeQuery($query, $p);
-    if ($dao->fetch()) {
-      return $dao->label;
-    }
-    return NULL;
-  }
-
-  /**
-   * @deprecated
-   *
-   * This function is not cached.
-   *
-   * @param string $groupName
-   * @param $label
-   * @param string $labelField
-   * @param string $labelType
-   * @param string $valueField
-   *
-   * @return null
-   */
-  public static function getValue(
-    $groupName,
-    $label,
-    $labelField = 'label',
-    $labelType = 'String',
-    $valueField = 'value'
-  ) {
-    if (empty($label)) {
-      return NULL;
-    }
-
-    CRM_Core_Error::deprecatedFunctionWarning('CRM_Core_PseudoConstant::getKey');
-
-    $query = "
-SELECT  v.label as label ,v.{$valueField} as value
-FROM   civicrm_option_value v,
-       civicrm_option_group g
-WHERE  v.option_group_id = g.id
-  AND  g.name            = %1
-  AND  v.is_active       = 1
-  AND  g.is_active       = 1
-  AND  v.$labelField     = %2
-";
-
-    $p = [
-      1 => [$groupName, 'String'],
-      2 => [$label, $labelType],
-    ];
-    $dao = CRM_Core_DAO::executeQuery($query, $p);
-    if ($dao->fetch()) {
-      return $dao->value;
-    }
-    return NULL;
-  }
-
-  /**
    * Get option_value.value from default option_value row for an option group
    *
    * @param string $groupName
@@ -430,22 +343,8 @@ WHERE  v.option_group_id = g.id
     if (empty($groupName)) {
       return NULL;
     }
-    $query = "
-SELECT v.value
-FROM   civicrm_option_value v,
-       civicrm_option_group g
-WHERE  v.option_group_id = g.id
-  AND  g.name            = %1
-  AND  v.is_active       = 1
-  AND  g.is_active       = 1
-  AND  v.is_default      = 1
-";
-    if (self::isDomainOptionGroup($groupName)) {
-      $query .= " AND v.domain_id = " . CRM_Core_Config::domainID();
-    }
-
-    $p = [1 => [$groupName, 'String']];
-    return CRM_Core_DAO::singleValueQuery($query, $p);
+    $options = self::values($groupName, FALSE, FALSE, FALSE, ' AND is_default = 1', 'value');
+    return CRM_Utils_Array::first($options);
   }
 
   /**
@@ -631,7 +530,7 @@ WHERE  v.option_group_id = g.id
       ] as $fld) {
         $row[$fld] = $dao->$fld;
         if ($localize && in_array($fld, ['label', 'description'])) {
-          $row[$fld] = ts($row[$fld]);
+          $row[$fld] = _ts($row[$fld]);
         }
       }
     }
@@ -693,6 +592,37 @@ WHERE  v.option_group_id = g.id
     self::$_values = [];
     self::$_cache = [];
     CRM_Utils_Cache::singleton()->flush();
+  }
+
+  /**
+   * Uses api adapter to fetch `from_email_address` options as if it were still an option group
+   *
+   * @see SiteEmailLegacyOptionValueAdapter
+   * @throws CRM_Core_Exception
+   */
+  private static function getLegacyFromEmailAddressValues(bool $onlyActive, $condition, string $labelColumnName, string $keyColumnName): array {
+    $where = [
+      ['option_group_id:name', '=', 'from_email_address'],
+      ['domain_id', '=', 'current_domain'],
+    ];
+    if ($onlyActive) {
+      $where[] = ['is_active', '=', TRUE];
+    }
+    if ($condition && is_string($condition)) {
+      // Use regex to extract the field_name and the value from the condition.
+      if (preg_match("/`?(\w+)`?\s*=\s*(\d+)$/", $condition, $matches)) {
+        $where[] = [$matches[1], '=', $matches[2]];
+      }
+      else {
+        throw new CRM_Core_Exception("Invalid condition: $condition");
+      }
+    }
+    // This api call will get converted by SiteEmailLegacyOptionValueAdapter
+    // Because of the telltale `'option_group_id:name', '=', 'from_email_address'`
+    return civicrm_api4('OptionValue', 'get', [
+      'checkPermissions' => FALSE,
+      'where' => $where,
+    ])->column($labelColumnName, $keyColumnName);
   }
 
 }

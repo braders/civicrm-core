@@ -10,6 +10,7 @@
  */
 
 use Civi\Api4\Activity;
+use Civi\Api4\SiteEmailAddress;
 
 /**
  * Test class for CRM_Contact_Form_Task_Email.
@@ -23,14 +24,13 @@ class CRM_Contact_Form_Task_EmailTest extends CiviUnitTestCase {
    */
   protected function setUp(): void {
     parent::setUp();
-    $this->_contactIds = [
-      $this->individualCreate(['first_name' => 'Antonia', 'last_name' => 'D`souza']),
-      $this->individualCreate(['first_name' => 'Anthony', 'last_name' => 'Collins']),
-    ];
-    $this->_optionValue = $this->callAPISuccess('optionValue', 'create', [
-      'label' => '"Seamus Lee" <seamus@example.com>',
-      'option_group_id' => 'from_email_address',
-    ]);
+    $this->individualCreate(['first_name' => 'Antonia', 'last_name' => 'D`souza']);
+    $this->individualCreate(['first_name' => 'Anthony', 'last_name' => 'Collins']);
+
+    $this->createTestEntity('SiteEmailAddress', [
+      'display_name' => 'Seamus Lee',
+      'email' => 'seamus@example.com',
+    ], 'aussie');
   }
 
   /**
@@ -40,6 +40,9 @@ class CRM_Contact_Form_Task_EmailTest extends CiviUnitTestCase {
    */
   public function tearDown(): void {
     Civi::settings()->set('allow_mail_from_logged_in_contact', 0);
+    if (!empty($this->ids['SiteEmailAddress'])) {
+      SiteEmailAddress::delete(FALSE)->addWhere('id', 'IN', $this->ids['SiteEmailAddress'])->execute();
+    }
     parent::tearDown();
   }
 
@@ -49,11 +52,7 @@ class CRM_Contact_Form_Task_EmailTest extends CiviUnitTestCase {
   public function testDomainEmailGeneration(): void {
     $emails = CRM_Core_BAO_Email::domainEmails();
     $this->assertNotEmpty($emails);
-    $optionValue = $this->callAPISuccess('OptionValue', 'Get', [
-      'id' => $this->_optionValue['id'],
-    ]);
     $this->assertArrayHasKey('"Seamus Lee" <seamus@example.com>', $emails);
-    $this->assertEquals('"Seamus Lee" <seamus@example.com>', $optionValue['values'][$this->_optionValue['id']]['label']);
   }
 
   /**
@@ -107,11 +106,10 @@ class CRM_Contact_Form_Task_EmailTest extends CiviUnitTestCase {
     $form->_contactIds[$deceasedContactID] = $deceasedContactID;
 
     $form->_allContactIds = $form->_toContactIds = $form->_contactIds;
-    $form->_fromEmails = [$loggedInEmail['id'] => 'mickey@mouse.com'];
     $form->isSearchContext = FALSE;
     $form->buildForm();
     $this->assertEquals([
-      'html_message' => '<br/><br/>--<p>This is a test Signature</p>',
+      'html_message' => '<br /><br />--<p>This is a test Signature</p>',
       'text_message' => '
 
 --

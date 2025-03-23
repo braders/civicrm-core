@@ -70,7 +70,7 @@ class CRM_Utils_Type {
    * @return string
    *   String identifying the data type, e.g. 'Int' or 'String'.
    */
-  public static function typeToString($type) {
+  public static function typeToString($type): string {
     // @todo Use constants in the case statements, e.g. "case T_INT:".
     // @todo return directly, instead of assigning a value.
     // @todo Use a lookup array, as a property or as a local variable.
@@ -84,7 +84,8 @@ class CRM_Utils_Type {
         break;
 
       case 3:
-        $string = 'Enum';
+        CRM_Core_Error::deprecatedFunctionWarning("Enum data type not supported.");
+        $string = 'String';
         break;
 
       case 4:
@@ -134,7 +135,7 @@ class CRM_Utils_Type {
         break;
     }
 
-    return (isset($string)) ? $string : "";
+    return $string ?? '';
   }
 
   /**
@@ -145,7 +146,6 @@ class CRM_Utils_Type {
     return [
       'Int' => self::T_INT,
       'String' => self::T_STRING,
-      'Enum' => self::T_ENUM,
       'Date' => self::T_DATE,
       'Time' => self::T_TIME,
       'Boolean' => self::T_BOOLEAN,
@@ -236,6 +236,7 @@ class CRM_Utils_Type {
       case 'Date':
       case 'Timestamp':
       case 'ContactReference':
+      case 'EntityReference':
       case 'MysqlOrderByDirection':
         $validatedData = self::validate($data, $type, $abort);
         if (isset($validatedData)) {
@@ -247,7 +248,7 @@ class CRM_Utils_Type {
       case 'Country':
       case 'StateProvince':
         // Handle multivalued data in delimited or array format
-        if (is_array($data) || (strpos($data, CRM_Core_DAO::VALUE_SEPARATOR) !== FALSE)) {
+        if (is_array($data) || (str_contains($data, CRM_Core_DAO::VALUE_SEPARATOR))) {
           $valid = TRUE;
           foreach (CRM_Utils_Array::explodePadded($data) as $item) {
             if (!CRM_Utils_Rule::positiveInteger($item)) {
@@ -380,6 +381,7 @@ class CRM_Utils_Type {
       'Date',
       'Timestamp',
       'ContactReference',
+      'EntityReference',
       'MysqlColumnNameOrAlias',
       'MysqlOrderByDirection',
       'MysqlOrderBy',
@@ -389,7 +391,7 @@ class CRM_Utils_Type {
       'Color',
     ];
     if (!in_array($type, $possibleTypes)) {
-      throw new CRM_Core_Exception(ts('Invalid type, must be one of : ' . implode($possibleTypes)));
+      throw new CRM_Core_Exception('Invalid type, must be one of : ' . implode($possibleTypes));
     }
     switch ($type) {
       case 'Integer':
@@ -435,12 +437,13 @@ class CRM_Utils_Type {
         break;
 
       case 'ContactReference':
+      case 'EntityReference':
         // null is valid
         if (strlen(trim($data)) == 0) {
           return trim($data);
         }
 
-        if (CRM_Utils_Rule::validContact($data)) {
+        if (CRM_Utils_Rule::positiveInteger($data)) {
           return (int) $data;
         }
         break;

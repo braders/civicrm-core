@@ -59,11 +59,7 @@ class CRM_Campaign_Form_Task_Interview extends CRM_Campaign_Form_Task {
     $this->_reserveToInterview = $this->get('reserveToInterview');
     if ($this->_reserveToInterview || $this->_votingTab) {
       //user came from voting tab / reserve form.
-      foreach ([
-        'surveyId',
-        'contactIds',
-        'interviewerId',
-      ] as $fld) {
+      foreach (['surveyId', 'contactIds', 'interviewerId'] as $fld) {
         $this->{"_$fld"} = $this->get($fld);
       }
       //get the target voter ids.
@@ -74,8 +70,8 @@ class CRM_Campaign_Form_Task_Interview extends CRM_Campaign_Form_Task {
     else {
       parent::preProcess();
       //get the survey id from user submitted values.
-      $this->_surveyId = CRM_Utils_Array::value('campaign_survey_id', $this->get('formValues'));
-      $this->_interviewerId = CRM_Utils_Array::value('survey_interviewer_id', $this->get('formValues'));
+      $this->_surveyId = $this->get('formValues')['campaign_survey_id'] ?? NULL;
+      $this->_interviewerId = $this->get('formValues')['survey_interviewer_id'] ?? NULL;
     }
 
     if ($this->_surveyId) {
@@ -217,7 +213,8 @@ WHERE {$clause}
     $this->_resultOptions = $this->get('resultOptions');
     if (!is_array($this->_resultOptions)) {
       $this->_resultOptions = [];
-      if ($resultOptionId = CRM_Utils_Array::value('result_id', $this->_surveyValues)) {
+      $resultOptionId = $this->_surveyValues['result_id'] ?? NULL;
+      if ($resultOptionId) {
         $this->_resultOptions = CRM_Core_OptionGroup::valuesByID($resultOptionId);
       }
       $this->set('resultOptions', $this->_resultOptions);
@@ -427,11 +424,7 @@ WHERE {$clause}
     }
     elseif ($buttonName == '_qf_Interview_next_interviewToRelease') {
       //get ready to jump to release form.
-      foreach ([
-        'surveyId',
-        'contactIds',
-        'interviewerId',
-      ] as $fld) {
+      foreach (['surveyId', 'contactIds', 'interviewerId'] as $fld) {
         $this->controller->set($fld, $this->{"_$fld"});
       }
       $this->controller->set('interviewToRelease', TRUE);

@@ -6,7 +6,12 @@
  */
 class CRM_Core_Page_AJAXTest extends CiviUnitTestCase {
 
-  public function testCheckAuthz() {
+  protected function setUp(): void {
+    parent::setUp();
+    $_SERVER['HTTP_X_REQUESTED_WITH'] = 'XMLHttpRequest';
+  }
+
+  public function testCheckAuthz(): void {
     $cases = [];
 
     $cases[] = ['method', 'CRM_Foo', FALSE, 'method'];

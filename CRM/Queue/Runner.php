@@ -116,13 +116,13 @@ class CRM_Queue_Runner {
    *     default: 'civicrm/queue'.
    */
   public function __construct($runnerSpec) {
-    $this->title = CRM_Utils_Array::value('title', $runnerSpec, ts('Queue Runner'));
+    $this->title = $runnerSpec['title'] ?? ts('Queue Runner');
     $this->queue = $runnerSpec['queue'];
-    $this->errorMode = CRM_Utils_Array::value('errorMode', $runnerSpec, $this->pickErrorMode($this->queue));
-    $this->isMinimal = CRM_Utils_Array::value('isMinimal', $runnerSpec, FALSE);
+    $this->errorMode = $runnerSpec['errorMode'] ?? $this->pickErrorMode($this->queue);
+    $this->isMinimal = $runnerSpec['isMinimal'] ?? FALSE;
     $this->onEnd = $runnerSpec['onEnd'] ?? NULL;
     $this->onEndUrl = $runnerSpec['onEndUrl'] ?? NULL;
-    $this->pathPrefix = CRM_Utils_Array::value('pathPrefix', $runnerSpec, 'civicrm/queue');
+    $this->pathPrefix = $runnerSpec['pathPrefix'] ?? 'civicrm/queue';
     $this->buttons = CRM_Utils_Array::value('buttons', $runnerSpec, ['retry' => TRUE, 'skip' => TRUE]);
     // perhaps this value should be randomized?
     $this->qrid = $this->queue->getName();
@@ -147,7 +147,7 @@ class CRM_Queue_Runner {
   }
 
   /**
-   * [EXPERIMENTAL] Run all tasks interactively. Redirect to a screen which presents the progress.
+   * Run all tasks interactively. Redirect to a screen which presents the progress.
    *
    * The exact mechanism and pageflow may be determined by the system configuration --
    * environments which support multiprocessing (background queue-workers) can use those;
@@ -352,6 +352,7 @@ class CRM_Queue_Runner {
     if (!empty($this->onEndUrl)) {
       $result['redirect_url'] = $this->onEndUrl;
     }
+    $this->enableBackgroundExecution();
     return $result;
   }
 
@@ -517,6 +518,26 @@ class CRM_Queue_Runner {
     // We don't actually know if the queue was registered persistently.
     // But if it was, then it should be disabled.
     CRM_Core_DAO::executeQuery('UPDATE civicrm_queue SET status = NULL WHERE name = %1', [
+      1 => [$this->queue->getName(), 'String'],
+    ]);
+  }
+
+  /**
+   * Ensure that background workers will not try to run this queue.
+   */
+  protected function enableBackgroundExecution(): void {
+    if (CRM_Core_Config::isUpgradeMode()) {
+      // Versions <=5.50 do not have `status` column.
+      if (!CRM_Core_DAO::checkTableExists('civicrm_queue') || !CRM_Core_BAO_SchemaHandler::checkIfFieldExists('civicrm_queue', 'status')) {
+        // The system doesn't have automatic background workers yet. Neither necessary nor possible to toggle `status`.
+        // See also: https://lab.civicrm.org/dev/core/-/issues/3653
+        return;
+      }
+    }
+
+    // If it was disabled for background processing & has not been otherwise altered then
+    // re-enable it as it might be a persistent queue.
+    CRM_Core_DAO::executeQuery('UPDATE civicrm_queue SET status = "active" WHERE name = %1 AND status IS NULL', [
       1 => [$this->queue->getName(), 'String'],
     ]);
   }

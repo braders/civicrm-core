@@ -78,9 +78,10 @@
         }
       };
 
-      this.getSearchDisplay = function(node) {
-        var searchKey = $scope.getSearchKey(node);
-        if (searchKey) {
+      // Finds a SearchDisplay within this container or within the fieldset containing this container
+      this.getSearchDisplay = function() {
+        var searchKey = ctrl.getDataEntity();
+        if (searchKey && !ctrl.entityName) {
           return afGui.getSearchDisplay.apply(null, searchKey.split('.'));
         }
       };
@@ -98,7 +99,8 @@
 
       $scope.tags = {
         div: ts('Container'),
-        fieldset: ts('Fieldset')
+        fieldset: ts('Fieldset'),
+        details: ts('Collapsible')
       };
 
       // Block settings
@@ -109,13 +111,17 @@
         return 'layout' in block;
       };
 
+      this.isJoin = function() {
+        return !!ctrl.join;
+      };
+
       $scope.getSetChildren = function(val) {
         var collection = block.layout || (ctrl.node && ctrl.node['#children']);
         return arguments.length ? (collection = val) : collection;
       };
 
       $scope.isRepeatable = function() {
-        return ctrl.join ||
+        return (ctrl.join && $scope.getRepeatMax() !== 1) ||
           (block.directive && afGui.meta.blocks[block.directive].repeat) ||
           (ctrl.node['af-fieldset'] && ctrl.editor.getEntityDefn(ctrl.editor.getEntity(ctrl.node['af-fieldset'])) !== false);
       };
@@ -126,17 +132,22 @@
           delete ctrl.node.min;
           delete ctrl.node['af-repeat'];
           delete ctrl.node['add-icon'];
+          delete ctrl.node['af-copy'];
+          delete ctrl.node['copy-icon'];
+
         } else {
           ctrl.node.min = '1';
           ctrl.node['af-repeat'] = ts('Add');
+          ctrl.node['af-copy'] = ts('Copy');
           delete ctrl.node.data;
         }
       };
 
       this.getCollapsibleIcon = function() {
-        if (afGui.hasClass(ctrl.node, 'af-collapsible')) {
-          return afGui.hasClass(ctrl.node, 'af-collapsed') ? 'fa-caret-right' : 'fa-caret-down';
+        if (ctrl.node['#tag'] === 'details') {
+          return 'open' in ctrl.node ? 'fa-caret-down' : 'fa-caret-right';
         }
+        return '';
       };
 
       // Sets min value for af-repeat as a string, returns it as an int
@@ -184,6 +195,12 @@
       $scope.pickAddIcon = function() {
         afGui.pickIcon().then(function(val) {
           ctrl.node['add-icon'] = val;
+        });
+      };
+
+      $scope.pickCopyIcon = function() {
+        afGui.pickIcon().then(function(val) {
+          ctrl.node['copy-icon'] = val;
         });
       };
 
@@ -242,7 +259,17 @@
         }
       };
 
+      this.onChangeUpdateAction = function() {
+        if (!ctrl.node.actions.update) {
+          ctrl.node.actions.delete = false;
+        }
+      };
+
       function initializeBlockContainer() {
+        // Set defaults for 'actions'
+        if (!('actions' in ctrl.node)) {
+          ctrl.node.actions = {update: true, delete: true};
+        }
 
         // Cancel the below $watch expressions if already set
         _.each(block.listeners, function(deregister) {
@@ -337,6 +364,9 @@
         if (node['af-join']) {
           return 'join';
         }
+        if (node['#tag'] === 'af-tabset') {
+          return 'tabset';
+        }
         if (node['#tag'] && node['#tag'] in afGui.meta.blocks) {
           return 'container';
         }
@@ -358,8 +388,6 @@
             ctrl.node['af-title'] = value;
           } else {
             delete ctrl.node['af-title'];
-            // With no title, cannot be collapsible
-            afGui.modifyClasses(ctrl.node, 'af-collapsible af-collapsed');
           }
         }
         return ctrl.node['af-title'];
@@ -416,8 +444,7 @@
           var joinType = ctrl.entityName.split('-join-');
           entityType = joinType[1] || (ctrl.editor && ctrl.editor.getEntity(joinType[0]).type);
         } else {
-          var searchKey = ctrl.getDataEntity(),
-            searchDisplay = afGui.getSearchDisplay.apply(null, searchKey.split('.')),
+          var searchDisplay = ctrl.getSearchDisplay(),
             fieldName = fieldKey.substr(fieldKey.indexOf('.') + 1),
             prefix = _.includes(fieldKey, '.') ? fieldKey.split('.')[0] : null;
           if (prefix) {

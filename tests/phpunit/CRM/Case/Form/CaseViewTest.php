@@ -8,9 +8,14 @@ class CRM_Case_Form_CaseViewTest extends CiviCaseTestCase {
   /**
    * Test that the search filter dropdown includes the desired activity types.
    */
-  public function testSearchFilterDropdown() {
+  public function testSearchFilterDropdown(): void {
     $client_id = $this->individualCreate([], 0, TRUE);
-    $caseObj = $this->createCase($client_id, $this->_loggedInUser);
+    $caseObj = $this->createCase($client_id, $this->getLoggedInUser());
+    \CRM_Core_Config::singleton()->userPermissionClass->permissions = [
+      'access CiviCRM',
+      'view all contacts',
+      'access my cases and activities',
+    ];
 
     $form = $this->getFormObject('CRM_Case_Form_CaseView');
     $form->set('cid', $client_id);
@@ -20,18 +25,22 @@ class CRM_Case_Form_CaseViewTest extends CiviCaseTestCase {
     // We don't care about the first one, just check it's what we expect
     $this->assertEquals('- select activity type -', $options[0]['text']);
     unset($options[0]);
+    $expected = [];
+    foreach ([
+      'Follow up',
+      'Income and benefits stabilization',
+      'Long-term housing plan',
+      'Medical evaluation',
+      'Mental health evaluation',
+      'Open Case',
+      'Secure temporary housing',
+    ] as $expectedValue) {
+      $expected[] = [CRM_Core_PseudoConstant::getKey('CRM_Activity_BAO_Activity', 'activity_type_id', $expectedValue) => $expectedValue];
+    }
     $mappedOptions = array_map(function($v) {
       return [$v['attr']['value'] => $v['text']];
     }, $options);
-    $this->assertEquals([
-      [14 => 'Follow up'],
-      [60 => 'Income and benefits stabilization'],
-      [58 => 'Long-term housing plan'],
-      [55 => 'Medical evaluation'],
-      [56 => 'Mental health evaluation'],
-      [13 => 'Open Case'],
-      [57 => 'Secure temporary housing'],
-    ], array_values($mappedOptions));
+    $this->assertEquals($expected, array_values($mappedOptions));
 
     // Now add some activities where the type might not even be in the config.
     $this->callAPISuccess('Activity', 'create', [
@@ -65,20 +74,20 @@ class CRM_Case_Form_CaseViewTest extends CiviCaseTestCase {
     $options = $form->getElement('activity_type_filter_id')->_options;
     unset($options[0]);
     $mappedOptions = array_map(function($v) {
-      return [$v['attr']['value'] => $v['text']];
+      return $v['text'];
     }, $options);
     $this->assertEquals([
-      [3 => 'Email'],
-      [14 => 'Follow up'],
-      [12 => 'Inbound Email'],
-      [60 => 'Income and benefits stabilization'],
-      [58 => 'Long-term housing plan'],
-      [55 => 'Medical evaluation'],
-      [1 => 'Meeting'],
-      [56 => 'Mental health evaluation'],
-      [13 => 'Open Case'],
-      [2 => 'Phone Call'],
-      [57 => 'Secure temporary housing'],
+      'Email',
+      'Follow up',
+      'Inbound Email',
+      'Income and benefits stabilization',
+      'Long-term housing plan',
+      'Medical evaluation',
+      'Meeting',
+      'Mental health evaluation',
+      'Open Case',
+      'Phone Call',
+      'Secure temporary housing',
     ], array_values($mappedOptions));
   }
 

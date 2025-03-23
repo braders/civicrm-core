@@ -10,9 +10,16 @@
  */
 namespace Civi\FlexMailer\Listener;
 
+use Civi\Core\Service\AutoService;
 use Civi\FlexMailer\Event\SendBatchEvent;
 
-class DefaultSender extends BaseListener {
+/**
+ * @service civi_flexmailer_default_sender
+ */
+class DefaultSender extends AutoService {
+
+  use IsActiveTrait;
+
   const BULK_MAIL_INSERT_COUNT = 10;
 
   public function onSend(SendBatchEvent $e) {
@@ -29,7 +36,7 @@ class DefaultSender extends BaseListener {
     $job_date = \CRM_Utils_Date::isoToMysql($job->scheduled_date);
     $mailer = \Civi::service('pear_mail');
 
-    $targetParams = $deliveredParams = array();
+    $targetParams = $deliveredParams = [];
     $count = 0;
     $retryBatch = FALSE;
 
@@ -158,7 +165,7 @@ class DefaultSender extends BaseListener {
     // SMTP response code is buried in the message.
     $code = preg_match('/ \(code: (.+), response: /', $message, $matches) ? $matches[1] : '';
 
-    if (strpos($message, 'Failed to write to socket') !== FALSE) {
+    if (str_contains($message, 'Failed to write to socket')) {
       return TRUE;
     }
 
@@ -167,15 +174,23 @@ class DefaultSender extends BaseListener {
       return FALSE;
     }
 
-    if (strpos($message, 'Failed to set sender') !== FALSE) {
+    // Consider SMTP Erorr 450, class 4.1.2 "Domain not found", as permanent failures if the corresponding setting is enabled
+    if ($code === '450' && \Civi::settings()->get('smtp_450_is_permanent')) {
+      $class = preg_match('/ \(code: (.+), response: ([0-9\.]+) /', $message, $matches) ? $matches[2] : '';
+      if ($class === '4.1.2') {
+        return FALSE;
+      }
+    }
+
+    if (str_contains($message, 'Failed to set sender')) {
       return TRUE;
     }
 
-    if (strpos($message, 'Failed to add recipient') !== FALSE) {
+    if (str_contains($message, 'Failed to add recipient')) {
       return TRUE;
     }
 
-    if (strpos($message, 'Failed to send data') !== FALSE) {
+    if (str_contains($message, 'Failed to send data')) {
       return TRUE;
     }
 
@@ -188,11 +203,11 @@ class DefaultSender extends BaseListener {
    * @param string $errorMessage
    */
   protected function recordBounce($job, $task, $errorMessage) {
-    $params = array(
+    $params = [
       'event_queue_id' => $task->getEventQueueId(),
       'job_id' => $job->id,
       'hash' => $task->getHash(),
-    );
+    ];
     $params = array_merge($params,
       \CRM_Mailing_BAO_BouncePattern::match($errorMessage)
     );

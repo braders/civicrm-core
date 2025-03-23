@@ -14,8 +14,8 @@
 {strip}
 <table class="selector row-highlight">
 <thead class="sticky">
-{if ! $single and $context eq 'Search' }
-  <th scope="col" title="{ts}Select rows{/ts}">{$form.toggleSelect.html}</th>
+{if ! $single and $context eq 'Search'}
+  <th scope="col" title="{ts escape='htmlattribute'}Select rows{/ts}">{$form.toggleSelect.html}</th>
 {/if}
   {foreach from=$columnHeaders item=header}
     <th scope="col">
@@ -32,14 +32,14 @@
   {counter start=0 skip=1 print=false}
   {foreach from=$rows item=row}
   <tr id='rowid{$row.membership_id}' class="{cycle values="odd-row,even-row"} {*if $row.cancel_date} disabled{/if*} crm-membership_{$row.membership_id}">
-     {if ! $single }
-       {if $context eq 'Search' }
+     {if ! $single}
+       {if $context eq 'Search'}
           {assign var=cbName value=$row.checkbox}
           <td>{$form.$cbName.html}</td>
        {/if}
        <td>{$row.contact_type}</td>
        <td>
-            <a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=`$row.contact_id`"}" title="{ts}View contact record{/ts}">{$row.sort_name}</a>
+            <a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=`$row.contact_id`"}" title="{ts escape='htmlattribute'}View contact record{/ts}">{$row.sort_name}</a>
         </td>
     {/if}
     <td class="crm-membership-type crm-membership-type_{$row.membership_type}">
@@ -53,15 +53,15 @@
     <td class="crm-membership-status crm-membership-status_{$row.membership_status}">{$row.membership_status}</td>
     <td class="crm-membership-auto_renew">
       {if $row.auto_renew eq 1}
-        <i class="crm-i fa-check" aria-hidden="true" title="{ts}Auto-renew active{/ts}"></i>
+        <i class="crm-i fa-check" aria-hidden="true" title="{ts escape='htmlattribute'}Auto-renew active{/ts}"></i>
       {elseif $row.auto_renew eq 2}
-        <i class="crm-i fa-ban" aria-hidden="true" title="{ts}Auto-renew error{/ts}"></i>
+        <i class="crm-i fa-ban" aria-hidden="true" title="{ts escape='htmlattribute'}Auto-renew error{/ts}"></i>
       {/if}
     </td>
     <td>
         {$row.action|replace:'xx':$row.membership_id}
         {if $row.owner_membership_id}
-            <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$row.owner_membership_id`&action=view&context=search"}" title="{ts}View Primary member record{/ts}" class="action-item">{ts}View Primary{/ts}</a>
+            <a href="{crmURL p='civicrm/membership/view' q="reset=1&id=`$row.owner_membership_id`&action=view&context=search"}" title="{ts escape='htmlattribute'}View Primary member record{/ts}" class="action-item">{ts}View Primary{/ts}</a>
         {/if}
     </td>
    </tr>

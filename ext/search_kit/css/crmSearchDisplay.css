@@ -20,10 +20,19 @@
   width: 60px;
 }
 
+#bootstrap-theme .crm-search-display button.dropdown-toggle {
+  white-space: nowrap;
+}
+
+.crm-search-display .crm-search-field-show-linebreaks .crm-search-field-value {
+  white-space: pre-line;
+}
+
 /* Loading placeholders */
 #bootstrap-theme .crm-search-loading-placeholder {
   height: 2em;
   width: 80%;
+  min-width: 4em;
   position: relative;
   overflow: hidden;
   background-color: rgba(0,0,0,.03);
@@ -47,4 +56,8 @@
   to {
     left: 100%;
   }
+}
+
+#bootstrap-theme .crm-search-display ul.pagination > li {
+  margin: 0;
 }

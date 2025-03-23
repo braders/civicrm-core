@@ -61,7 +61,6 @@ class api_v3_GroupNestingTest extends CiviUnitTestCase {
         'civicrm_group',
         'civicrm_group_nesting',
         'civicrm_contact',
-        'civicrm_uf_group',
         'civicrm_uf_join',
         'civicrm_uf_match',
       ]
@@ -70,34 +69,11 @@ class api_v3_GroupNestingTest extends CiviUnitTestCase {
   }
 
   /**
-   * Test civicrm_group_nesting_get.
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testGet() {
-    $params = [
-      'parent_group_id' => $this->ids['Group']['parent'],
-      'child_group_id' => $this->ids['Group']['child'],
-    ];
-
-    $result = $this->callAPIAndDocument('group_nesting', 'get', $params, __FUNCTION__, __FILE__);
-    $expected = [
-      1 => [
-        'id' => 1,
-        'child_group_id' => $this->ids['Group']['child'],
-        'parent_group_id' => $this->ids['Group']['parent'],
-      ],
-    ];
-
-    $this->assertEquals($expected, $result['values']);
-  }
-
-  /**
    * Test civicrm_group_nesting_get with just one param (child_group_id).
    *
    * @dataProvider versionThreeAndFour
    */
-  public function testGetWithChildGroupId() {
+  public function testGetWithChildGroupId(): void {
     $params = [
       'child_group_id' => $this->ids['Group']['child3'],
     ];
@@ -126,7 +102,7 @@ class api_v3_GroupNestingTest extends CiviUnitTestCase {
    *
    * @dataProvider versionThreeAndFour
    */
-  public function testGetWithParentGroupId() {
+  public function testGetWithParentGroupId(): void {
     $params = [
       'parent_group_id' => $this->ids['Group']['parent'],
     ];
@@ -156,64 +132,20 @@ class api_v3_GroupNestingTest extends CiviUnitTestCase {
   }
 
   /**
-   * Test civicrm_group_nesting_get for no records results.
-   *
-   * Success expected. (these tests are of marginal value as are in syntax conformance,
-   * don't copy & paste.
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testGetEmptyResults() {
-    $params = [
-      'parent_group_id' => $this->ids['Group']['parent'],
-      'child_group_id' => 700,
-    ];
-    $this->callAPISuccess('group_nesting', 'get', $params);
-  }
-
-  /**
    * Test civicrm_group_nesting_create.
    *
    * @throws \Exception
    *
    * @dataProvider versionThreeAndFour
    */
-  public function testCreate() {
+  public function testCreate(): void {
     $params = [
       'parent_group_id' => $this->ids['Group']['parent'],
       'child_group_id' => $this->ids['Group']['child2'],
     ];
 
-    $this->callAPIAndDocument('group_nesting', 'create', $params, __FUNCTION__, __FILE__);
+    $this->callAPISuccess('group_nesting', 'create', $params);
     $this->callAPISuccessGetCount('GroupNesting', $params, 1);
-  }
-
-  /**
-   * Test civicrm_group_nesting_remove.
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testDelete() {
-    $params = [
-      'parent_group_id' => $this->ids['Group']['parent'],
-      'child_group_id' => $this->ids['Group']['child'],
-    ];
-
-    $result = $this->callAPISuccess('group_nesting', 'get', $params);
-    $params = ['id' => $result['id']];
-    $this->callAPIAndDocument('group_nesting', 'delete', $params, __FUNCTION__, __FILE__);
-    $this->assertEquals(0, $this->callAPISuccess('group_nesting', 'getcount', $params));
-  }
-
-  /**
-   * Test civicrm_group_nesting_remove with empty parameter array.
-   *
-   * Error expected.
-   *
-   * @dataProvider versionThreeAndFour
-   */
-  public function testDeleteWithEmptyParams() {
-    $this->callAPIFailure('group_nesting', 'delete', []);
   }
 
 }

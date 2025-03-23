@@ -52,7 +52,7 @@ abstract class CRM_Import_Form_Preview extends CRM_Import_Forms {
   public function setStatusUrl() {
     $statusID = $this->get('statusID');
     if (!$statusID) {
-      $statusID = md5(uniqid(rand(), TRUE));
+      $statusID = bin2hex(random_bytes(16));
       $this->set('statusID', $statusID);
     }
     $statusUrl = CRM_Utils_System::url('civicrm/ajax/status', "id={$statusID}", FALSE, NULL, FALSE);
@@ -72,6 +72,10 @@ abstract class CRM_Import_Form_Preview extends CRM_Import_Forms {
     $this->assign('mapper', $this->getMappedFieldLabels());
     $this->assign('dataValues', $this->getDataRows([], 2));
     $this->assign('columnNames', $this->getColumnHeaders());
+    // This can be overridden by Civi-Import so that the Download url
+    // links that go to SearchKit open in a new tab.
+    $this->assign('isOpenResultsInNewTab');
+    $this->assign('allRowsUrl');
     //get the mapping name displayed if the mappingId is set
     $mappingId = $this->get('loadMappingId');
     if ($mappingId) {

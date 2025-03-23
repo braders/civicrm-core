@@ -42,12 +42,6 @@
     {ts}Define participant roles for events here (e.g. Attendee, Host, Speaker...). You can then assign roles and search for participants by role.{/ts}
   {elseif $gName eq 'participant_status'}
     {ts}Define statuses for event participants here (e.g. Registered, Attended, Cancelled...). You can then assign statuses and search for participants by status.{/ts} {ts}"Counted?" controls whether a person with that status is counted as participant for the purpose of controlling the Maximum Number of Participants.{/ts}
-  {elseif $gName eq 'from_email_address'}
-    {if $allowLoggedIn}
-      {ts}By default, CiviCRM uses the primary email address of the logged in user as the FROM address when sending emails to contacts. However, you can use this page to define one or more general Email Addresses that can be selected as an alternative. EXAMPLE: <em>"Client Services" &lt;clientservices@example.org&gt;</em>{/ts}
-    {else}
-      {ts}You can use this page to define one or more general Email Addresses that can be selected as the From Address. EXAMPLE: <em>"Client Services" &lt;clientservices@example.org&gt;</em>{/ts}
-    {/if}
   {elseif $isLocked}
     {ts}This option group is reserved for system use. You cannot add or delete options in this list.{/ts}
   {else}
@@ -58,13 +52,8 @@
 
 <div class="crm-content-block crm-block">
 {if $rows}
-  {if $isLocked ne 1}
-    <div class="action-link">
-      {crmButton p="civicrm/admin/options/$gName" q='action=add&reset=1' class="new-option" icon="plus-circle"}{if !$gLabel}{ts}Add Option{/ts}{else}{ts 1=$gLabel}Add %1{/ts}{/if}{/crmButton}
-    </div>
-  {/if}
 {foreach from=$rows item=row}
-  {if !empty($row.icon)}{assign var='hasIcons' value=TRUE}{/if}
+  {if !empty($row.icon)}{assign var='hasIcons' value=true}{/if}
 {/foreach}
 <div id={$gName}>
         {strip}
@@ -74,7 +63,7 @@
          <thead>
          <tr>
             {if $hasIcons}
-              <th></th>
+              <th><span class="sr-only">{ts}Icons{/ts}</span></th>
             {/if}
             {if $showComponent}
                 <th>{ts}Component{/ts}</th>
@@ -107,7 +96,7 @@
             {if $showIsDefault}<th>{ts}Default{/ts}</th>{/if}
             <th>{ts}Reserved{/ts}</th>
             <th>{ts}Enabled?{/ts}</th>
-            <th></th>
+            <th><span class="sr-only">{ts}Actions{/ts}</span></th>
           </tr>
           </thead>
           <tbody>
@@ -149,7 +138,7 @@
 </div>
 {else}
     <div class="messages status no-popup">
-      <img src="{$config->resourceBase}i/Inform.gif" alt="{ts}status{/ts}"/>
+      {icon icon="fa-info-circle"}{/icon}
       {ts}None found.{/ts}
     </div>
 {/if}

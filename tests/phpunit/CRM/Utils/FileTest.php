@@ -6,10 +6,15 @@
  */
 class CRM_Utils_FileTest extends CiviUnitTestCase {
 
+  public function tearDown(): void {
+    $this->callAPISuccess('OptionValue', 'get', ['option_group_id' => 'safe_file_extension', 'value' => 17, 'api.option_value.delete' => ['id' => "\$value.id"]]);
+    parent::tearDown();
+  }
+
   /**
    * Test is child path.
    */
-  public function testIsChildPath() {
+  public function testIsChildPath(): void {
     $testCases = [];
     $testCases[] = ['/ab/cd/ef', '/ab/cd', FALSE];
     $testCases[] = ['/ab/cd', '/ab/cd/ef', TRUE];
@@ -39,7 +44,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
     }
   }
 
-  public function testStripComment() {
+  public function testStripComment(): void {
     $strings = [
       "\nab\n-- cd\nef" => "\nab\nef",
       "ab\n-- cd\nef" => "ab\nef",
@@ -148,7 +153,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
   /**
    * Check a few variations of isIncludable
    */
-  public function testIsIncludable() {
+  public function testIsIncludable(): void {
     $path = \Civi::paths()->getPath('[civicrm.private]/');
     $bare_filename = 'afile' . time() . '.php';
     $file = "$path/$bare_filename";
@@ -209,7 +214,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
    * Just trying to include some of the same tests as php itself and
    * this doesn't fit in well to a dataprovider so is separate.
    */
-  public function testIsDirMkdir() {
+  public function testIsDirMkdir(): void {
     $a_dir = sys_get_temp_dir() . '/testIsDir';
     // I think temp is global to the test node, so if any test failed on this
     // in the past it doesn't get cleaned up and so already exists.
@@ -227,7 +232,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
   /**
    * testIsDirSlashVariations
    */
-  public function testIsDirSlashVariations() {
+  public function testIsDirSlashVariations(): void {
     $a_dir = sys_get_temp_dir() . '/testIsDir';
     // I think temp is global to the test node, so if any test failed on this
     // in the past it doesn't get cleaned up and so already exists.
@@ -272,7 +277,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
    * Test hard and soft links with isDir
    * Note hard links to directories aren't allowed so can only test with file.
    */
-  public function testIsDirLinks() {
+  public function testIsDirLinks(): void {
     if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
       $this->markTestSkipped('Windows has links but not the same.');
     }
@@ -425,7 +430,7 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
 
     try {
       $cmd = 'cv ev -v ' . escapeshellarg("return require \"$outFile\";");
-      $descriptorSpec = array(0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']);
+      $descriptorSpec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
       $oldOutput = getenv('CV_OUTPUT');
       putenv("CV_OUTPUT=json");
       $process = proc_open($cmd, $descriptorSpec, $pipes, __DIR__);
@@ -644,6 +649,100 @@ class CRM_Utils_FileTest extends CiviUnitTestCase {
       }
       $this->assertEquals($expectMatches, $actualMatches, "The file $expectFile should be found as follows:");
     }
+  }
+
+  /**
+   * Generate examples to test the safe file extension
+   * @return array
+   */
+  public static function safeFileExtensionExamples(): array {
+    $cases = [
+      'PDF File Extension' => ['pdf', TRUE, TRUE],
+      'PHP File Extension' => ['php', FALSE, FALSE],
+      'PHAR' => ['phar', FALSE, FALSE],
+      'PHP5 File Extension' => ['php5', FALSE, FALSE],
+    ];
+    return $cases;
+  }
+
+  /**
+   * Test that modifying the safe File Extension option group still ensures some are blocked
+   * @dataProvider safeFileExtensionExamples
+   */
+  public function testSafeFileExtensionValidation($extension, $standardInstallCheck, $afterModificationCheck): void {
+    $this->assertEquals($standardInstallCheck, CRM_Utils_File::isExtensionSafe($extension));
+    $optionValue = $this->callAPISuccess('OptionValue', 'create', [
+      'option_group_id' => 'safe_file_extension',
+      'label' => $extension,
+      'name' => $extension,
+      'value' => 17,
+    ]);
+    unset(Civi::$statics['CRM_Utils_File']['file_extensions']);
+    $this->assertEquals($standardInstallCheck, CRM_Utils_File::isExtensionSafe($extension));
+  }
+
+  public function testCleanDir(): void {
+    $a_dir = sys_get_temp_dir() . '/testCleanDir';
+    system('rm -rf ' . escapeshellarg($a_dir));
+    mkdir("$a_dir");
+    mkdir("$a_dir/clean");
+    mkdir("$a_dir/clean/sub1");
+    touch("$a_dir/clean/file1");
+    touch("$a_dir/clean/sub1/file2");
+    symlink("nonexistent", "$a_dir/clean/link1");
+    symlink("../external1", "$a_dir/clean/link2");
+    symlink("../external2", "$a_dir/clean/link3");
+    if (function_exists('posix_mkfifo')) {
+      posix_mkfifo("$a_dir/clean/fifo1", 0644);
+    }
+    touch("$a_dir/externalfile1");
+    mkdir("$a_dir/externaldir1");
+    touch("$a_dir/externaldir1/file1");
+    mkdir("$a_dir/externaldir1/sub1");
+
+    CRM_Utils_File::cleanDir("$a_dir/clean", FALSE, FALSE);
+    if (getenv('DEBUG')) {
+      system('ls -lAR ' . escapeshellarg($a_dir));
+    }
+
+    $this->assertThat("$a_dir/externalfile1", $this->fileExists());
+    $this->assertThat("$a_dir/externaldir1", $this->directoryExists());
+    $this->assertThat("$a_dir/externaldir1/sub1", $this->directoryExists());
+    $this->assertThat("$a_dir/externaldir1/file1", $this->fileExists());
+    $this->assertThat("$a_dir/clean", $this->directoryExists());
+
+    // The first call to `cleanDir(...$rmdir=FALSE...)` left behind the folder.
+    // But you can also clean it up...
+    CRM_Utils_File::cleanDir("$a_dir/clean", TRUE, FALSE);
+    $this->assertThat("$a_dir/clean", $this->logicalNot($this->directoryExists()));
+
+    system('rm -rf ' . escapeshellarg($a_dir));
+  }
+
+  public function testCleanDir_TopLink(): void {
+    $a_dir = sys_get_temp_dir() . '/testCleanDir';
+    system('rm -rf ' . escapeshellarg($a_dir));
+    mkdir("$a_dir");
+
+    mkdir("$a_dir/externaldir1");
+    touch("$a_dir/externaldir1/file1");
+    mkdir("$a_dir/externaldir1/sub1");
+    symlink("$a_dir/externaldir1", "$a_dir/my_dir");
+
+    $this->assertThat("$a_dir/my_dir", $this->directoryExists());
+    $this->assertThat("$a_dir/my_dir/file1", $this->fileExists());
+    $this->assertThat("$a_dir/my_dir/sub1", $this->directoryExists());
+
+    CRM_Utils_File::cleanDir("$a_dir/my_dir", TRUE, FALSE);
+
+    $this->assertThat("$a_dir/my_dir", $this->logicalNot($this->directoryExists()));
+    $this->assertThat("$a_dir/my_dir/file1", $this->logicalNot($this->fileExists()));
+    $this->assertThat("$a_dir/my_dir/sub1", $this->logicalNot($this->directoryExists()));
+
+    $this->assertThat("$a_dir/externaldir1/file1", $this->fileExists());
+    $this->assertThat("$a_dir/externaldir1/sub1", $this->directoryExists());
+
+    system('rm -rf ' . escapeshellarg($a_dir));
   }
 
 }

@@ -14,8 +14,8 @@
   <table class="selector row-highlight">
     <thead class="sticky">
     <tr>
-      {if !$single and $context eq 'Search' }
-        <th scope="col" title="{ts}Select rows{/ts}">{$form.toggleSelect.html}</th>
+      {if !$single and $context eq 'Search'}
+        <th scope="col" title="{ts escape='htmlattribute'}Select rows{/ts}">{$form.toggleSelect.html}</th>
       {/if}
       {if !$single}
       <th scope="col"></th>
@@ -36,8 +36,8 @@
     {counter start=0 skip=1 print=false}
     {foreach from=$rows item=row}
       <tr id="rowid{$row.contribution_id}" class="{cycle values="odd-row,even-row"} {if $row.contribution_cancel_date} cancelled{/if} crm-contribution_{$row.contribution_id}">
-        {if !$single }
-          {if $context eq 'Search' }
+        {if !$single}
+          {if $context eq 'Search'}
             {assign var=cbName value=$row.checkbox}
             <td>{$form.$cbName.html}</td>
           {/if}
@@ -45,7 +45,7 @@
           <td><a href="{crmURL p='civicrm/contact/view' q="reset=1&cid=`$row.contact_id`"}">{$row.sort_name}</a></td>
         {/if}
         <td class="crm-contribution-amount">
-             <a class="nowrap bold crm-expand-row" title="{ts}view payments{/ts}" href="{crmURL p='civicrm/payment' q="view=transaction&component=contribution&action=browse&cid=`$row.contact_id`&id=`$row.contribution_id`&selector=1"}">
+             <a class="nowrap bold crm-expand-row" title="{ts escape='htmlattribute'}view payments{/ts}" href="{crmURL p='civicrm/payment' q="view=transaction&component=contribution&action=browse&cid=`$row.contact_id`&id=`$row.contribution_id`&selector=1"}">
                &nbsp; {$row.total_amount|crmMoney:$row.currency}
             </a>
           {if $row.amount_level}<br/>({$row.amount_level}){/if}
